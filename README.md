@@ -1,9 +1,17 @@
 # Projects
 Publicly Available Projects.  Both from school and personal projects.  These are closer to being refined then average private work.
 
-### Purpose: 
+### My website is located [here](https://andrew-morgan-website.herokuapp.com).
 
-This 
+## Purpose: 
+
+This Repo is for projects and files to be shared publicly from my personal projects and website. A significant amount of content will be for:
+
+- Data Science: analysis of various datasets; namely in **R** and **Python** and possibly in Java at a later point.
+- Economic Analyses: pet projects that typically analyze economic/income/wealth inequality and effects on economic growth (basically macroeconomics)
+- Coding Projects: samller coding projects that can be run in one's own local setup (ideally); typically **Python** though possibly Java and other languages I wish to improve or learn; example projects would be a Sudoku Solver or Webscrapper for Craigslist
+- Applications: I may add application source code (though possibly only components)
+
 
 
 ## Here is the Bio from my GitHub Account:
