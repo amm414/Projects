@@ -1,0 +1,1346 @@
+---
+title: "Stat 1361 Final Project"
+author: "Max Harleman, Chris Moloney, Minbae Lee, Dan Kardish, Andrew Morgan"
+date: "April 8, 2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# 1. Data Cleaning and Setup:
+
+## 1.1 Removing Heavily Correlated Features
+
+Many variables (like pf_rol or pf_ss) are aggregates of more specific Rule-of-Law (rol) and security and safety (ss) features. They seem to do a simple average, which causes the more specific variables to have a lower impact on hf_score. The following code removes them:
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(FNN)
+library(boot)
+library(glmnet)
+library(pls)
+library(MASS)
+library(leaps)
+library(tree)
+library(rpart.plot)
+library(randomForest)
+#human.freedom.index = read.csv(file = "C:/Users/maxha/Box Sync/Stat 1361_2360 Project/hfi_cc_2018.csv")
+human.freedom.index = read.csv(file = "C:/Users/Andrew/Desktop/School/2019-Spring/STAT - Statistical Learning and Data Science/Project/Actual project/the-human-freedom-index/hfi_cc_2018.csv")
+cols_to_remove = c("pf_rol", "pf_ss", "pf_movement", "pf_ss_women", "pf_religion", 
+                   "pf_association", "pf_expression", "pf_identity", "pf_score", "pf_rank", 
+                   "ef_government", "ef_legal", "ef_money", "ef_trade", "ef_regulation", 
+                   "ef_score", "ef_rank", "pf_identity_sex", "ef_trade_movement", 
+                   "pf_ss_disappearances", "ef_regulation_labor", "ef_regulation_business")
+human.freedom.index = human.freedom.index %>% dplyr::select(-cols_to_remove)
+```
+
+```{r}
+## Creating a county by year row names
+  country= human.freedom.index$countries
+  year= human.freedom.index$year
+  co_year= paste(country, year, sep = " ", collapse = NULL)
+  human.freedom.index= data.frame(co_year, human.freedom.index)
+  human.freedom.index$ISO_code <- NULL
+  human.freedom.index$countries <- NULL
+  human.freedom.index$region <- NULL
+  #human.freedom.index$year <- NULL
+  rownames(human.freedom.index)=human.freedom.index[,1]
+  human.freedom.index$co_year <- NULL
+
+```
+
+\bigskip
+
+## 1.2 Removing Columns with Many NAs
+
+The following code reduces the dataset to `ncol(human.freedom.index)` columns, which is more than a 50% reduction in features. Of the columns, 1 is the response **hf_score**, and two are alternative categorical responses (hf_rank (rank of the hf_scores), hf_quartile (the quartile of hf_scores)). The remaining 39 are predictors.
+
+
+```{r}
+cols.to.drop2 = list()    # will create list of column names to drop from dataset
+list_counter = 1          # index for the list() object
+for (i in 1:ncol(human.freedom.index)){
+  # checking if the number of N/A's is 100 or more
+  #     (seemed good with preliminary inspection)
+  if(sum(is.na(human.freedom.index[,i])) >= 100 ){
+    # append the column name that has 100+ N/A's 
+    cols.to.drop2[[list_counter]] = colnames(human.freedom.index[i])
+    list_counter = list_counter + 1     # update the counter
+  }
+}
+# now to 'vectorize' the list by unlist()-ing
+cols.to.drop2 = unlist(cols.to.drop2)
+ncol(human.freedom.index)   # number of features BEFORE dropping
+human.freedom.index = human.freedom.index %>%
+  dplyr::select(-cols.to.drop2) 
+ncol(human.freedom.index)   # number of features AFTER dropping due to NAs
+
+nrow(human.freedom.index)   # number of rows BEFORE dropping 
+# drop rows with ANY N/A's (this will bias the dataset)
+human.freedom.index = human.freedom.index %>% na.omit()
+nrow(human.freedom.index)   # number of rows AFTER dropping due to NAs
+```
+
+\bigskip
+
+## 1.3 Removing Outliers and Leverage Points
+
+We have some outliers and leverage points, we remove them with code found here: https://stats.stackexchange.com/questions/164099/removing-outliers-based-on-cooks-distance-in-r-language/345040
+
+```{r} 
+lm.fit =lm(hf_score~ . -hf_rank -hf_quartile -year , data=human.freedom.index)
+plot(lm.fit, pch=18, col="red", which=c(4))
+abline(h = 4/nrow(human.freedom.index), col="black")
+cooksd <- cooks.distance(lm.fit)
+human.freedom.index$cooksd = cooksd
+human.freedom.index$outlier = ifelse(cooksd > 4/(nrow(human.freedom.index)), "Y", "N")
+human.freedom.index.removed.outliers = human.freedom.index %>% 
+  filter(outlier != 'Y') %>% dplyr::select(-c(outlier, cooksd))
+
+lm.fit =lm(hf_score~ . -hf_rank -hf_quartile -year, data=human.freedom.index.removed.outliers)
+plot(lm.fit, pch=18, col="red", which=c(4))
+abline(h = 4/nrow(human.freedom.index), col="black")
+
+human.freedom.index = human.freedom.index %>% dplyr::select(-c(outlier, cooksd))
+nrow(human.freedom.index.removed.outliers)   # number of rows AFTER dropping due to outliers/leverage points
+nrow(human.freedom.index.removed.outliers)/nrow(human.freedom.index)
+```
+
+\bigskip
+
+## 1.4 Creating Dataframes for Analysis:
+
+```{r}
+# vector of all column names that are responses (or forms of the responses)
+# leave rank/quartile in case 
+responses = c("hf_score", "hf_rank", "hf_quartile")
+# vector of main response 
+main.response = responses[1]
+# vector of all non-features MINUS hf_score (primary response is retained)  
+other.response = responses[-1]
+
+# 2 functions to take dataset and filter for features or response
+filter.HFI.features = function(data){
+  newdata = data %>% dplyr::select(-responses)
+  return(newdata)
+}
+
+filter.HFI.response = function(data){
+  newdata = data %>% dplyr::select(main.response)
+  return(newdata)
+}
+
+# these dfs contain ALL observations without NAs
+hfi.response = filter.HFI.response(human.freedom.index)
+hfi.features = filter.HFI.features(human.freedom.index)
+hfi.combined = cbind(hfi.features, hfi.response)
+
+# these dfs remove influential observations
+hfi.response.no.outlier = filter.HFI.response(human.freedom.index.removed.outliers)
+hfi.features.no.outlier = filter.HFI.features(human.freedom.index.removed.outliers)
+hfi.combined.no.outlier = cbind(hfi.features.no.outlier, hfi.response.no.outlier)
+```
+
+\bigskip
+
+## 1.5 Creating Train and Test Sets
+
+```{r}
+# set the seed to 
+set.seed(111)
+
+generate.train.test = function(data){
+  combined.train = data %>% sample_frac(size=0.8)
+  combined.test = data %>% setdiff(combined.train)
+  
+  tss.hf_score = mean((mean(data$hf_score) -
+                        data$hf_score)^2)
+  tss.test.hf_score = mean((mean(combined.test$hf_score) -
+                          combined.test$hf_score)^2)
+  # Total Sum of Squares AVERAGED (since we are dealing with MSE)
+  tss.hf_score
+  tss.test.hf_score
+  ret.list = list("train" = combined.train, "test" = combined.test, 
+                  "tss" = tss.hf_score, "tss.test" = tss.test.hf_score)
+}
+
+hfi.combined.list = generate.train.test(hfi.combined) 
+```
+
+This seperates into a 80-20 split between train-test sets. Then, we get the TSS for all residuals of the test set. This can then be used to get an R^2 with the test set later on. The test set tss TSS `hfi.combined.list$tss`.
+
+\bigskip
+
+
+# 2. Linear Regression and Model Selection Methods:
+
+## 2.1 Train Test Split Estimates of Error
+
+### 2.1.1 Linear Regression with all 39 Predictors
+
+```{r}
+lm.fit = lm(hf_score ~ . -year, data = hfi.combined.list[["train"]])
+lm.preds = predict(lm.fit, newdata = hfi.combined.list[["test"]])
+# get MSE and R^2 (just 1 - MSE/MEAN(TSS) === 1 - RSS/TSS)
+mse.lm = mean((lm.preds - hfi.combined.list[["test"]]$hf_score)^2)
+lm.r2 = 1 - (mse.lm/hfi.combined.list[["tss.test"]])
+mse.lm
+lm.r2
+```
+
+The R^2 of the FULL model using Linear Regression is: `lm.r2`. This is very high, and shows there is alot of potential trying to predict with this dataset.
+
+\bigskip
+
+### 2.1.2 Best Subset Selection
+
+```{r}
+set.seed(111)
+get.diff.errors = function(rss, N, mtss, p, harsh.penalty = 5){
+# These are SIMPLIFIED Formulas:
+# AIC = LL + 2 * DF.LL
+# BIC = LL + 2 * DF.LL
+# ADJ = 1 - [(MSE/MEAN(TSS)) * ((N-P-1)/(N-1))]
+# P = # predictors; N = number of obs in test set
+  
+  base.part = N * (log(2*pi) + 1 + log(rss/N)) 
+  bic   = base.part + (log(N)*(p+1))
+  aic   = base.part + (harsh.penalty *(p+1))
+  adjr2 = 1 - ((rss/N)/mtss) * ((N - p - 1 )/ (N-1))
+  return(list("bic" = bic,
+              "aic" = aic,
+              "adjr2" = adjr2))
+}
+```
+
+```{r}
+# AIC with larger constant than 2 (BIC is roughly == 2 aswell, 
+# so larger constant needed for harsher penalty)
+harsh.penalty = 10
+
+get.best.subset = function(data.train, data.test, mtss, max.vars=20){
+  best.subset = regsubsets(hf_score ~ . -year, 
+                           data = data.train,
+                           nvmax = max.vars,
+                           intercept = T,
+                           method = "exhaustive")
+
+  best.subset.mse = rep(NA, max.vars)
+  best.subset.aic = rep(NA, max.vars)
+  best.subset.bic = rep(NA, max.vars)
+  best.subset.adj = rep(NA, max.vars)
+
+  for (i in 1:max.vars){
+    coef.i = coef(best.subset, id = i)
+    temp.pred = as.matrix(
+      data.test[,colnames(data.test) %in% names(coef.i)] ) %*%
+      coef.i[names(coef.i) %in% colnames(data.test)]
+    temp.pred = as.vector(temp.pred) + coef.i["(Intercept)"]
+    # MSE = RSS / N (Average of Residuals)
+    rss = sum((temp.pred- data.test$hf_score )^2)
+    best.subset.mse[i] = rss/nrow(data.test)
+    
+    other.errors = get.diff.errors(rss, nrow(data.test),mtss, 
+                                   p = i, harsh.penalty = harsh.penalty)
+    best.subset.bic[i] = other.errors$bic
+    best.subset.aic[i] = other.errors$aic 
+    best.subset.adj[i] = other.errors$adjr2
+  }
+  return(list("model" = best.subset,
+              "best.subset.mse"   = best.subset.mse,
+              "best.subset.adjr2" = best.subset.adj,
+              "best.subset.bic"   = best.subset.bic,
+              "best.subset.aic"   = best.subset.aic
+              ))
+}
+```
+
+```{r}
+# store the results of the best-subset regressions
+max.variables.to.run = ncol(hfi.combined.list$train) - 2
+best.subset.result = get.best.subset(hfi.combined.list$train, hfi.combined.list$test, 
+                         hfi.combined.list$tss.test, max.variables.to.run)
+```
+
+```{r}
+plot.test.errors = function(title, ylab.val, errors, max=FALSE){
+  xbound = length(errors)
+  df = data.frame(matrix(nrow=xbound, ncol = 0))
+  df$pred = 1:xbound
+  df$errors = errors
+  df$isOpt = rep(FALSE, xbound)
+  
+  if(max){
+    opt.val = which.max(errors)
+    df$isOpt[opt.val] = TRUE
+  } else{
+    opt.val = which.min(errors)
+    df$isOpt[opt.val] = TRUE
+  }
+
+  g = ggplot(data = df, aes(x = pred, y = errors)) + 
+    geom_point(aes(color=isOpt, size=isOpt)) +
+    geom_line() + ggtitle(title) + ylab(ylab.val) + 
+    xlab("Number of Predictors") +
+    scale_color_manual(values = c("black", "red")) +
+    scale_size_manual(values = c(1, 4)) +
+    guides(color=FALSE, size=FALSE)
+  print(g)
+}
+```
+
+```{r}
+print.out.graphs.lm = function(model.list, harsh.penalty, title.name){
+  list.keys = names(model.list)[-1]
+  title.keys = c("MSE", "Adjusted R-Squared", "BIC", 
+                 paste("AIC (", harsh.penalty, ")",sep=""))
+  for( i in 1:length(list.keys)){
+    if(title.keys[i] == "Adjusted R-Squared"){
+      plot.test.errors(title = paste(title.name, " the Test ", title.keys[i]), 
+                     ylab=title.keys[i], 
+                     errors = unlist(model.list[[list.keys[i]]]),
+                     max=TRUE)
+    } else{
+      plot.test.errors(title = paste(title.name , " the Test ", title.keys[i]), 
+                     ylab=title.keys[i], 
+                     errors = unlist(model.list[[list.keys[i]]]))
+    }
+    cat("Current Metric: Test ", title.keys[i],"\n")
+    if( title.keys[i]=="Adjusted R-Squared"){
+      cat("Maximum Value: ", which.max(model.list$best.subset.adjr2),
+          "\n Number of Predictors: ", 
+          model.list$best.subset.adjr2[which.max(model.list$best.subset.adjr2)])
+    } else{
+      cat("Minimum Value: ", model.list[[list.keys[i]]][which.min(model.list[[list.keys[i]]])],
+          "\n Number of Predictors: ",which.min(model.list[[list.keys[i]]]) )
+          
+    }
+    cat("\n\n")
+  }
+}
+
+print.out.graphs.lm(best.subset.result, harsh.penalty = harsh.penalty, title.name = "Best-Subset")
+
+```
+
+We utilize a best subset model selection method that uses training RSS to define the best model of each size. After reaching about 10 predictors, the test MSE started flattening, and decreasing only slightly. Overall, the best subset is relatively good at showing most important factors in hf_score.
+
+NOTES:
+  What to ADD:
+    - utilize cross-validation to pick best subset (this will take ALONG time) using k=4 or k=5 for number of folds (too       many and it will take LONG TIME)
+      Note: Max 3/21 (I'm not sure if we need to do this. It would be ideal, but probably not necessary for the purpose       of the course. That being said, if someone wants to try to code it up, go for it!)
+    - Utilizing BIC/*AIC*/Mallow's CP/R^2 Adjusted to penalize the mse on test sets for more predictors present in model
+    
+
+\bigskip
+
+### 2.1.3 Forward Model Selection
+
+Probably better approach than backwards, since we want to eliminate the most variables in order to find a sparse list of features to predict HFI score.
+
+```{r}
+# set to 'forward' selection, allow max variables to be added
+do.selection.methods = function(data.train, data.test, mtss, max.vars, type){
+  if(type == "forward"){
+     fit = regsubsets(hf_score ~ . -year, method = "forward",
+                         nvmax = max.vars, data = data.train)
+  } else{
+    fit = regsubsets(hf_score ~ . -year, method = "backward",
+                         nvmax = max.vars, data = data.train)
+  }
+  test.model.matrix = model.matrix(hf_score ~ . -year, data = data.test)
+  method.mse   = rep(NA, max.vars)
+  method.aic   = rep(NA, max.vars)
+  method.bic  = rep(NA, max.vars)
+  method.adjr2 = rep(NA, max.vars)
+  
+  for( i in 1:max.vars){
+    # AGAIN, using pipes to efficiently create predictions
+    coef.i = coef(fit, id = i)
+    preds = test.model.matrix[,names(coef.i)] %*% coef.i
+    # create the MSE and then AIC
+    rss = sum((preds - data.test$hf_score)^2)
+    method.mse[i] = rss/nrow(data.test)
+    
+    other.errors = get.diff.errors(rss, nrow(data.test), mtss,
+                                   p = i, harsh.penalty = harsh.penalty)
+    
+    method.aic[i]   = other.errors$aic
+    method.bic[i]   = other.errors$bic
+    method.adjr2[i] = other.errors$adjr2
+  }
+  return(list("model" = fit,
+              "forward.mse"   = method.mse,
+              "forward.adjr2" = method.adjr2,
+              "forward.bic"   = method.bic,
+              "forward.aic"   = method.aic
+              ))
+}
+```
+
+```{r}
+forward.results = do.selection.methods(hfi.combined.list$train, hfi.combined.list$test, 
+                         hfi.combined.list$tss.test, ncol(hfi.combined.list$test)-2, type = "forward")
+print.out.graphs.lm(forward.results, harsh.penalty = harsh.penalty, title.name = "Forward-Selection")
+```
+We utilize a forward model selection method that uses training RSS to define the best model of each size. The model with the lowest test MSE of `mse.forward[which.min(mse.forward)]`includes `which.min(mse.forward)` predictors. Like best subset, after reaching about 10 predictors, the test MSE starts flattening as additional predictors are added. Overall, the best subset is relatively good at showing most important factors in hf_score.
+
+\bigskip
+
+### 2.1.4 Forward Model Selection
+```{r}
+backwards.results = do.selection.methods(hfi.combined.list$train, hfi.combined.list$test, 
+                         hfi.combined.list$tss.test, ncol(hfi.combined.list$test)-2, type = "backwards")
+print.out.graphs.lm(backwards.results, harsh.penalty = harsh.penalty, title.name = "Backwards-Selection")
+
+```
+
+We utilized a backwards selection method that develops models 
+
+We utilize a forward model selection method that uses training RSS to define the best model of each size. The model with the lowest test MSE of `mse.forward[which.min(mse.forward)]`includes `which.min(mse.forward)` predictors. Like best subset, after reaching about 10 predictors, the test MSE starts flattening as additional predictors are added. Overall, the best subset is relatively good at showing most important factors in hf_score.
+
+
+\bigskip
+
+## 2.2 Cross Validation Estimates of Error
+
+Note: Max 3/21 (Andrew, the following code (making the models formulas so we can run CV) is awesome. Great thinking! I added to it so we can also compare models of each size on the CV Error with plots!
+
+```{r}
+set.seed(111)
+# Set the number of folds for CV
+# This code collects the models as formulas that from forward and best-subset selection
+# The goal is to then take the formulas and run cross-validation
+
+get.cv.errors = function(data.hfi, regression.results, number.of.folds=10){
+  cv.err = rep(NA, ncol(data.hfi)-2)
+  for(i in 1:(ncol(data.hfi)-2)){
+    form = paste(names(coef(regression.results[["model"]], id = i))[-1], collapse = " + " )
+    form = as.formula(paste("hf_score ~ ", form, sep = ""))
+    cv = cv.glm(data = data.hfi, K = number.of.folds, glmfit = glm(formula = form, 
+                                                                   data = data.hfi))
+    cv.err[i] = cv$delta[1]
+  }
+  return(cv.err)
+}
+```
+
+```{r}
+plot.cv.errors = function(cv.errors, title.string){
+  p1 = plot(cv.errors, main=paste(title.string), xlab = "Number of Predictors",
+       ylab = "CV Error", pch = 19, type = "b")
+  points (which.min(cv.errors), cv.errors[which.min(cv.errors)], 
+          col ="red",cex=2,pch =19)
+  print(p1)
+}
+```
+
+```{r message=FALSE}
+dataset.hfi = hfi.combined.list$train %>% full_join(hfi.combined.list$test)
+
+cv.err.results = list()
+cv.err.results[["forward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                          regression.results = forward.results)
+cv.err.results[["backward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                           regression.results = backwards.results)
+cv.err.results[["best.subset"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                              regression.results = best.subset.result)
+
+cv.full.lm = cv.glm(data = dataset.hfi, K = 10, glmfit = glm(formula = hf_score ~ . -year, data = dataset.hfi))
+
+cv.full.lm.err = cv.full.lm$delta[1]
+cv.err.results[["full.lm"]] = cv.full.lm.err
+
+
+plot.cv.errors(cv.err.results$forward, title.string = "Forward Selected Models")
+plot.cv.errors(cv.err.results$backward, title.string = "Backward Selected Models")
+plot.cv.errors(cv.err.results$best.subset, title.string = "Best-Subset Selected Models")
+```
+
+```{r}
+# These are the errors from the best subset models with the lowest errors:
+which.min(cv.err.results$forward)
+cv.err.results$forward[which.min(cv.err.results$forward)]
+fit4=cv.err.results$forward[which.min(cv.err.results$forward)]
+
+which.min(cv.err.results$best.subset)
+cv.err.results$best.subset[which.min(cv.err.results$best.subset)]
+fit6= cv.err.results$best.subset[which.min(cv.err.results$best.subset)]
+
+# total preds (-1 because 1 is year that is unused)
+ncol(hfi.features)-1
+cv.err.results$full.lm
+fit2= cv.err.results$full.lm
+hfi.combined.list$tss
+
+```
+
+The cross-validated errors are very similar. The full model does very well, but the smaller models capture almost the same exact amount of correlation. 
+
+This cross-validation basically shows that the data is highly correlated, and a almost perfect model can be discovered, as the average TSS is `hfi.combined.list$tss`, which means that all of the models explain over 95% of the variance in the outcome variable
+
+Here are the `which.min(cv.err.results$best.subset)` coefficients in the model with the lowest 10-fold CV Error, selected using best subset selection:
+
+```{r}
+coef(forward.results$model,  which.min(cv.err.results$forward))
+```
+
+Additionally, here are the `which.min(cv.err.results$best.subset)` coefficients in the model with the lowest 10-fold CV Error, selected using forward selection:
+
+```{r}
+coef(best.subset.result$model, which.min(cv.err.results$best.subset))
+```
+
+Finally, here are the `which.min(cv.err.results$backward)` coefficients in the model with the lowest 10-fold CV Error, selected using forward selection:
+
+```{r}
+coef(backwards.results$model, which.min(cv.err.results$backward))
+```
+
+It is encouraging that the models with the lowest 10-fold CV Error in forward and best subset selection selection include mostly the same predictors. They also show similar curves, in which reductions in 10-fold CV Error level off after adding about 10 predictors.
+
+\bigskip
+
+
+# 3  Additional Linear Model Selection and Regularization Methods:
+
+## 3.1 Shrinkage Methods
+### 3.1.1 Ridge Regression
+
+```{r}
+set.seed(111)
+do.ridge.lasso = function(data.train, data.test, alpha){
+  grid = 10^seq(10,-2, length = 1000)
+  train.model = model.matrix(hf_score ~ . - year, data = data.train)[,-1]
+  test.model = model.matrix(hf_score ~ . - year, data = data.test)[,-1]
+  
+  cv.model =  cv.glmnet(train.model, data.train$hf_score, alpha = alpha, 
+                     lambda = grid, thresh = 1e-12)
+  final.model = glmnet(train.model, data.train$hf_score, alpha = alpha, 
+                     lambda = cv.model$lambda.min, thresh = 1e-12)
+  bestlam <- cv.model$lambda.min
+
+  pred = predict(final.model, newx = test.model, s = cv.model$lambda.min)
+  mse.model = mean((data.test$hf_score - pred)^2)
+  
+  if( alpha==1 ){
+    return(list("model" = final.model,
+                "best.lambda" = bestlam,
+                "mse" = mse.model))
+  } else{
+    return(list("model" = final.model,
+                "best.lambda" = bestlam,
+                "mse" = mse.model))
+  }
+}
+
+```
+
+```{r}
+ridge = do.ridge.lasso(hfi.combined.list$train, hfi.combined.list$test, alpha=0)
+
+ridge$model$beta
+ridge$best.lambda
+ridge$mse
+```
+
+Using the 10-fold cross validated best lamba of about `ridge$best.lambda`, in the Ridge model all 39 variables remain in the model.The test MSE rises to `ridge$mse` which is just slightly lower than the test MSE of OLS of `fit1`.
+
+\bigskip
+
+### 3.1.2 LASSO
+
+```{r}
+lasso = do.ridge.lasso(hfi.combined.list$train, hfi.combined.list$test, alpha=1)
+
+rownames.no.na = c()
+for (i in 1:length(rownames(lasso$model$beta))){
+  if( lasso$model$beta[i] != 0){
+    rownames.no.na = c(rownames.no.na, rownames(lasso$model$beta)[i])
+  }
+}
+lasso[["rownames.left"]] = rownames.no.na
+
+lasso$model$beta
+lasso$best.lambda
+lasso$mse
+lasso$rownames.left
+```
+
+Using the 10-fold cross validated best lamba of `bestlam.lasso`, the resulting Lasso is a better model than Ridge because it removes several predictors. The test MSE of `mse.lasso` is slightly better than Ridge (`mse.ridge`), and is lower than the test MSE of the full OLS model (`fit1`).
+
+\bigskip
+
+## 3.2 Dimension Reduction Methods
+### 3.2.1 Principle Components Regression (PCR)
+
+```{r}
+pcr.model = pcr(hf_score ~ . -year , data = hfi.combined.list$train, scale = TRUE, 
+                validation = "CV")
+print(validationplot(pcr.model, val.type = "MSEP"))
+```
+
+```{r}
+find.best.mse.pcr.pls = function(model, data.test){
+  min.val = 0
+  lowest.mse = 1000000
+  for( i in 1:model$ncomp){
+    preds = predict(model, newdata = data.test, ncomp = i)
+    mse = mean((preds - data.test$hf_score)^2)
+    if(mse <lowest.mse){
+      lowest.mse = mse
+      min.val = i
+    }
+  }
+  return(list("min.val" = min.val,
+              "best.mse" = lowest.mse))
+}
+
+pcr.best = find.best.mse.pcr.pls(pcr.model, hfi.combined.list$test)
+pcr.best$min.val
+pcr.best$best.mse
+fit9 = pcr.best$best.mse
+```
+
+Using 10-fold cross validation, the lowest average root MSE is the one corresponding to M=37 components.The resulting PCR gives a test MSE of `pcr.best$best.mse`, and is slightly higher than the test MSE of the full OLS model (`fit1`). Notably, the validation plot shows that after the first component is added, only marginal benefits are gained from adding more components.
+
+\bigskip
+
+### 3.2.2 Partial Least Squares (PLS)
+
+```{r}
+set.seed(111)
+# create pls model and plot validation; report the best mse
+pls.model = plsr(hf_score ~ . -year, data = hfi.combined.list$train, scale = TRUE, 
+                 validation = "CV")
+validationplot(pls.model, val.type = "MSEP")
+```
+```{r}
+pls.best = find.best.mse.pcr.pls(pls.model, hfi.combined.list$test)
+pls.best$min.val
+pls.best$best.mse
+fit10 = pls.best$best.mse
+```
+
+Using 10-fold cross validation, the lowest average root MSE is the one corresponding to M=9. The resulting PCR, the resulting test MSE is `pls.mse`, and is slightly higher than the test MSE of the full OLS model (`fit1`). The validation and the varience explained seem to go completely constant after 9 components. Again, the validation plot shows that after the first component is added, only marginal benefits are gained from adding more components.
+
+
+\newpage
+
+```{r}
+x = matrix(data=
+           c("Full OLS, 39 Predictors (test/train)",
+             "Full OLS, 39 Predictors (10-fold CV)",
+             paste0("Forward Select, ", which.min(forward.results$forward.mse), " Predictors (test/train)"),
+             paste0("Forward Select, ", which.min(cv.err.results$forward), " Predictors (10-fold CV)"),
+             paste0("Backward Select, ", which.min(backwards.results$forward.mse)," Predictors (test/train)"), 
+             paste0("Backward Select, ", which.min(cv.err.results$backward), " Predictors (10-fold CV)"), 
+             paste0("Best Subset, ", which.min(best.subset.result$best.subset.mse)," Predictors (test/train)"),
+             paste0("Best Subset, ", which.min(cv.err.results$best.subset), " Predictors (10-fold CV)"),
+             "Ridge, 39 Predictors (test/train)",
+             paste0("Lasso, ", length(lasso$rownames.left), " Predictors (test/train)"),
+             paste0("PCR, ", pcr.best$min.val, " Components, (test/train)"),
+             paste0("PLSR, ", pls.best$min.val, " Components, (test/train)"),
+             "Mean TSS",
+mse.lm,
+cv.err.results$full.lm,
+min(forward.results$forward.mse), # fit 3
+min(cv.err.results$forward),
+min(backwards.results$forward.mse),
+min(cv.err.results$backward),
+min(best.subset.result$best.subset.mse),
+min(cv.err.results$best.subset),
+ridge$mse,
+lasso$mse,
+pcr.best$best.mse,
+pls.best$best.mse,
+hfi.combined.list$tss
+), nrow=13, ncol=2) 
+colnames(x) <- c("Method","test MSE")
+list.x.axis = c()
+for( i in 1:13){
+  list.x.axis = c(list.x.axis, paste0(i))
+}
+
+df.x.all = as.data.frame(x, row.names = list.x.axis)
+df.x.all
+df.x.all$`test MSE` = round(as.numeric(as.character(df.x.all[["test MSE"]])), 5)
+df.x.all
+cv.err.results$forward
+```
+
+\newpage
+
+# Now Without Outliers
+
+## Full-Model
+```{r}
+hfi.combined.no.outliers.list = generate.train.test(hfi.combined.no.outlier)
+lm.fit.out = lm(hf_score ~ . -year, data = hfi.combined.no.outliers.list[["train"]])
+lm.preds = predict(lm.fit.out, newdata = hfi.combined.no.outliers.list[["test"]])
+# get MSE and R^2 (just 1 - MSE/MEAN(TSS) === 1 - RSS/TSS)
+mse.lm.no.outlier = mean((lm.preds - hfi.combined.no.outliers.list[["test"]]$hf_score)^2)
+lm.r2 = 1 - (mse.lm.no.outlier/hfi.combined.no.outliers.list[["tss.test"]])
+mse.lm.no.outlier
+lm.r2
+```
+
+\bigskip
+
+## Best-Subset, Forward Selection, Backwards Selection
+
+### Best-Subset
+```{r}
+# store the results of the best-subset regressions
+max.variables.to.run = ncol(hfi.combined.no.outliers.list$train) - 2
+best.subset.no.outlier.result = get.best.subset(hfi.combined.no.outliers.list$train, 
+                                                hfi.combined.no.outliers.list$test, 
+                                                hfi.combined.no.outliers.list$tss.test, 
+                                                max.variables.to.run)
+
+print.out.graphs.lm(best.subset.no.outlier.result,
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Best-Subset")
+```
+
+### Forward-Selection
+```{r}
+forward.no.outlier.result = do.selection.methods(hfi.combined.no.outliers.list$train, 
+                                                  hfi.combined.no.outliers.list$test, 
+                                                  hfi.combined.no.outliers.list$tss.test, 
+                                                  ncol(hfi.combined.no.outliers.list$test)-2, 
+                                                  type = "forward")
+
+print.out.graphs.lm(forward.no.outlier.result,
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Forward-Selection")
+```
+
+
+### Backward Selection
+```{r}
+backwards.no.outlier.result = do.selection.methods(hfi.combined.no.outliers.list$train,
+                                                   hfi.combined.no.outliers.list$test, 
+                                                   hfi.combined.no.outliers.list$tss.test, 
+                                                   ncol(hfi.combined.no.outliers.list$test)-2, 
+                                                   type = "backwards")
+
+print.out.graphs.lm(backwards.no.outlier.result, 
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Backwards-Selection")
+```
+
+## Get the CV Errors
+```{r message=FALSE}
+dataset.hfi = hfi.combined.no.outliers.list$train %>% full_join(hfi.combined.no.outliers.list$test)
+
+cv.err.no.outlier.results = list()
+cv.err.no.outlier.results[["forward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                                       regression.results = forward.no.outlier.result)
+cv.err.no.outlier.results[["backward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                                        regression.results = backwards.no.outlier.result)
+cv.err.no.outlier.results[["best.subset"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                                           regression.results = best.subset.no.outlier.result)
+
+cv.full.lm = cv.glm(data = dataset.hfi, K = 10, glmfit = glm(formula = hf_score ~ . - year, data = dataset.hfi))
+
+cv.full.lm.err = cv.full.lm$delta[1]
+cv.err.no.outlier.results[["full.lm"]] = cv.full.lm.err
+
+
+plot.cv.errors(cv.err.no.outlier.results$forward, title.string = "Forward Selected Models")
+plot.cv.errors(cv.err.no.outlier.results$backward, title.string = "Backward Selected Models")
+plot.cv.errors(cv.err.no.outlier.results$best.subset, title.string = "Best-Subset Selected Models")
+```
+
+
+```{r}
+# These are the errors from the best subset models with the lowest errors:
+which.min(cv.err.no.outlier.results$forward)
+cv.err.no.outlier.results$forward[which.min(cv.err.no.outlier.results$forward)]
+
+which.min(cv.err.no.outlier.results$best.subset)
+cv.err.no.outlier.results$best.subset[which.min(cv.err.no.outlier.results$best.subset)]
+
+# total preds (-1 because 1 is year that is unused)
+ncol(hfi.features)-1
+cv.err.no.outlier.results$full.lm
+hfi.combined.no.outliers.list$tss
+```
+
+### Coefs of Forward 
+
+```{r}
+coef(forward.no.outlier.result$model,  which.min(cv.err.no.outlier.results$forward))
+```
+
+
+### Coefs of Best-Subset 
+
+```{r}
+coef(best.subset.no.outlier.result$model,  which.min(cv.err.no.outlier.results$best.subset))
+```
+
+
+### Coefs of Backwards 
+
+```{r}
+coef(backwards.no.outlier.result$model, which.min(cv.err.no.outlier.results$backward))
+```
+
+# Ridge and Lasso
+
+## Ridge
+```{r}
+ridge.no.outlier = do.ridge.lasso(hfi.combined.no.outliers.list$train,
+                                  hfi.combined.no.outliers.list$test, 
+                                  alpha=0)
+
+ridge.no.outlier$model$beta
+ridge.no.outlier$best.lambda
+ridge.no.outlier$mse
+```
+
+## Lasso
+```{r}
+lasso.no.outlier = do.ridge.lasso(hfi.combined.no.outliers.list$train,
+                                  hfi.combined.no.outliers.list$test, 
+                                  alpha=1)
+
+rownames.no.na = c()
+for (i in 1:length(rownames(lasso.no.outlier$model$beta))){
+  if( lasso.no.outlier$model$beta[i] != 0){
+    rownames.no.na = c(rownames.no.na, rownames(lasso.no.outlier$model$beta)[i])
+  }
+}
+lasso.no.outlier[["rownames.left"]] = rownames.no.na
+
+lasso.no.outlier$model$beta
+lasso.no.outlier$best.lambda
+lasso.no.outlier$mse
+lasso.no.outlier$rownames.left
+```
+
+# PCR and PLSR
+
+## PCR
+```{r}
+pcr.model.no.outlier = pcr(hf_score ~ . -year , scale= TRUE,
+                           data = hfi.combined.no.outliers.list$train,
+                           validation = "CV")
+print(validationplot(pcr.model.no.outlier, val.type = "MSEP"))
+```
+
+```{r}
+pcr.no.outlier.best = find.best.mse.pcr.pls(pcr.model.no.outlier, hfi.combined.no.outliers.list$test)
+pcr.no.outlier.best$min.val
+pcr.no.outlier.best$best.mse
+```
+
+## PLSR
+```{r}
+pls.no.outlier.model = plsr(hf_score ~ . -year, scale = TRUE,
+                 data = hfi.combined.no.outliers.list$train, 
+                 validation = "CV")
+validationplot(pls.no.outlier.model, val.type = "MSEP")
+```
+
+```{r}
+pls.no.outlier.best = find.best.mse.pcr.pls(pls.no.outlier.model,
+                                 hfi.combined.no.outliers.list$test)
+pls.no.outlier.best$min.val
+pls.no.outlier.best$best.mse
+```
+
+```{r}
+x = matrix(data=
+           c("Full OLS, 39 Predictors (test/train)",
+             "Full OLS, 39 Predictors (10-fold CV)",
+             paste0("Forward Select, ", which.min(forward.no.outlier.result$forward.mse), " Predictors (test/train)"),
+             paste0("Forward Select, ", which.min(cv.err.no.outlier.results$forward), " Predictors (10-fold CV)"),
+             paste0("Backward Select, ", which.min(backwards.no.outlier.result$forward.mse)," Predictors (test/train)"), 
+             paste0("Backward Select, ", which.min(cv.err.no.outlier.results$backward), " Predictors (10-fold CV)"), 
+             paste0("Best Subset, ", which.min(best.subset.no.outlier.result$best.subset.mse)," Predictors (test/train)"),
+             paste0("Best Subset, ", which.min(cv.err.no.outlier.results$best.subset), " Predictors (10-fold CV)"),
+             paste0("Ridge, ", length(ridge.no.outlier$model$beta), " Predictors (test/train)"),
+             paste0("Lasso, ", length(lasso.no.outlier$rownames.left), " Predictors (test/train)"),
+             paste0("PCR, ", pcr.no.outlier.best$min.val ," Components, (test/train)"),
+             paste0("PLSR, ", pls.no.outlier.best$min.val, " Components, (test/train)"),
+             "Mean TSS",
+mse.lm.no.outlier,
+cv.err.no.outlier.results$full.lm,
+min(forward.no.outlier.result$forward.mse), # fit 3
+min(cv.err.no.outlier.results$forward),
+min(backwards.no.outlier.result$forward.mse),
+min(cv.err.no.outlier.results$backward),
+min(best.subset.no.outlier.result$best.subset.mse),
+min(cv.err.no.outlier.results$best.subset),
+ridge.no.outlier$mse,
+lasso.no.outlier$mse,
+pcr.no.outlier.best$best.mse,
+pls.no.outlier.best$best.mse,
+hfi.combined.no.outliers.list$tss
+), nrow=13, ncol=2) 
+colnames(x) <- c("Method","test MSE")
+
+df.x.all.no.outlier = as.data.frame(x, row.names = list.x.axis)
+df.x.all.no.outlier$`test MSE` = round(as.numeric(as.character(df.x.all.no.outlier[["test MSE"]])), 5)
+df.x.all.no.outlier
+```
+
+\newpage
+
+# NOW, 2008 vs 2016
+
+THE DATASET SIZE IS SMALLER -- KEEP IN MIND FOR AIC, BIC
+
+split and filter by year (2008 vs 2016)
+
+```{r}
+min.year = min(hfi.combined$year)
+max.year = max(hfi.combined$year)
+hfi.2008 = hfi.combined %>% filter(year == min.year) 
+hfi.2016 = hfi.combined %>% filter(year == max.year)
+hfi.2008.list = generate.train.test(hfi.2008)
+hfi.2016.list = generate.train.test(hfi.2016)
+```
+
+## First do 2008
+
+### Full Model
+
+```{r}
+
+lm.fit.2008 = lm(hf_score ~ . -year, data = hfi.2008.list[["train"]])
+lm.preds = predict(lm.fit.2008, newdata = hfi.2008.list[["test"]])
+# get MSE and R^2 (just 1 - MSE/MEAN(TSS) === 1 - RSS/TSS)
+mse.lm.2008 = mean((lm.preds - hfi.2008.list[["test"]]$hf_score)^2)
+lm.r2 = 1 - (mse.lm.2008/hfi.2008.list[["tss.test"]])
+mse.lm.2008
+lm.r2
+```
+
+### Best-Subset
+```{r}
+max.variables.to.run = ncol(hfi.2008.list$train) - 2
+best.subset.2008.result = get.best.subset(hfi.2008.list$train, hfi.2008.list$test, 
+                                     hfi.2008.list$tss.test, 
+                                     max.variables.to.run)
+
+print.out.graphs.lm(best.subset.2008.result, 
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Best-Subset")
+```
+
+
+### Forward Selection
+
+```{r}
+forward.2008.results = do.selection.methods(hfi.2008.list$train, hfi.2008.list$test, 
+                                            hfi.2008.list$tss.test, ncol(hfi.2008.list$test)-2, 
+                                            type = "forward")
+
+print.out.graphs.lm(forward.2008.results, 
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Forward-Selection")
+```
+
+
+### Backward Selection
+
+```{r}
+backwards.2008.results = do.selection.methods(hfi.2008.list$train, hfi.2008.list$test, 
+                                         hfi.2008.list$tss.test, ncol(hfi.2008.list$test)-2,
+                                         type = "backwards")
+
+print.out.graphs.lm(backwards.2008.results,
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Backwards-Selection")
+
+```
+
+### CV Errors:
+
+This is the metric that should be used for sure!!
+
+```{r}
+dataset.hfi = hfi.2008.list$train %>% full_join(hfi.2008.list$test)
+
+cv.err.2008.results = list()
+cv.err.2008.results[["forward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                          regression.results = forward.2008.results)
+cv.err.2008.results[["backward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                           regression.results = backwards.2008.results)
+cv.err.2008.results[["best.subset"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                              regression.results = best.subset.2008.result)
+
+cv.full.lm = cv.glm(data = dataset.hfi, K = 10, glmfit = glm(formula = hf_score ~ . -year, data = dataset.hfi))
+
+cv.full.lm.err = cv.full.lm$delta[1]
+cv.err.2008.results[["full.lm"]] = cv.full.lm.err
+
+
+plot.cv.errors(cv.err.2008.results$forward, title.string = "Forward Selected Models")
+plot.cv.errors(cv.err.2008.results$backward, title.string = "Backward Selected Models")
+plot.cv.errors(cv.err.2008.results$best.subset, title.string = "Best-Subset Selected Models")
+```
+
+```{r}
+# These are the errors from the best subset models with the lowest errors:
+which.min(cv.err.2008.results$forward)
+cv.err.2008.results$forward[which.min(cv.err.2008.results$forward)]
+
+which.min(cv.err.2008.results$best.subset)
+cv.err.2008.results$best.subset[which.min(cv.err.2008.results$best.subset)]
+
+# total preds (-1 because 1 is year that is unused)
+ncol(hfi.features)-1
+cv.err.2008.results$full.lm
+hfi.2008.list$tss
+```
+
+```{r}
+coef(forward.2008.results$model,  which.min(cv.err.2008.results$forward))
+```
+
+```{r}
+coef(backwards.2008.results$model, which.min(cv.err.2008.results$backward))
+```
+
+```{r}
+coef(best.subset.2008.result$model, which.min(cv.err.2008.results$best.subset))
+```
+
+
+### Ridge
+
+```{r}
+ridge.2008 = do.ridge.lasso(hfi.2008.list$train, 
+                            hfi.2008.list$test, 
+                            alpha=0)
+
+ridge.2008$model$beta
+ridge.2008$best.lambda
+ridge.2008$mse
+```
+
+
+### Lasso
+
+```{r}
+lasso.2008 = do.ridge.lasso(hfi.2008.list$train, 
+                       hfi.2008.list$test, 
+                       alpha=1)
+
+rownames.no.na = c()
+for (i in 1:length(rownames(lasso.2008$model$beta))){
+  if( lasso.2008$model$beta[i] != 0){
+    rownames.no.na = c(rownames.no.na, rownames(lasso.2008$model$beta)[i])
+  }
+}
+lasso.2008[["rownames.left"]] = rownames.no.na
+
+lasso.2008$model$beta
+lasso.2008$best.lambda
+lasso.2008$mse
+lasso.2008$rownames.left
+```
+
+### PCR
+
+```{r}
+pcr.2008.model = pcr(hf_score ~ . -year ,  scale = TRUE,
+                     data = hfi.2008.list$train, validation = "CV")
+print(validationplot(pcr.2008.model, val.type = "MSEP"))
+```
+
+```{r}
+pcr.2008.best = find.best.mse.pcr.pls(pcr.2008.model, hfi.2008.list$test)
+pcr.2008.best$min.val
+pcr.2008.best$best.mse
+```
+
+### PLSR
+
+```{r}
+# create pls model and plot validation; report the best mse
+pls.2008.model = plsr(hf_score ~ . -year, scale = TRUE, 
+                 data = hfi.2008.list$train, validation = "CV")
+validationplot(pls.2008.model, val.type = "MSEP")
+```
+
+```{r}
+pls.2008.best = find.best.mse.pcr.pls(pls.2008.model, hfi.2008.list$test)
+pls.2008.best$min.val
+pls.2008.best$best.mse
+```
+
+### Matrix of Results 2008
+
+```{r}
+x = matrix(data=
+           c("Full OLS, 39 Predictors (test/train)",
+             "Full OLS, 39 Predictors (10-fold CV)",
+             paste0("Forward Select, ", which.min(forward.2008.results$forward.mse), " Predictors (test/train)"),
+             paste0("Forward Select, ", which.min(cv.err.2008.results$forward), " Predictors (10-fold CV)"),
+             paste0("Backward Select, ", which.min(backwards.2008.results$forward.mse)," Predictors (test/train)"), 
+             paste0("Backward Select, ", which.min(cv.err.2008.results$backward), " Predictors (10-fold CV)"), 
+             paste0("Best Subset, ", which.min(best.subset.2008.result$best.subset.mse)," Predictors (test/train)"),
+             paste0("Best Subset, ", which.min(cv.err.2008.results$best.subset), " Predictors (10-fold CV)"),
+             paste0("Ridge, ", length(ridge.2008$model$beta), " Predictors (test/train)"),
+             paste0("Lasso, ", length(lasso.2008$rownames.left), " Predictors (test/train)"),
+             paste0("PCR, ", pcr.2008.best$min.val ," Components, (test/train)"),
+             paste0("PLSR, ", pls.2008.best$min.val, " Components, (test/train)"),
+             "Mean TSS",
+mse.lm.2008,
+cv.err.2008.results$full.lm,
+min(forward.2008.results$forward.mse), # fit 3
+min(cv.err.2008.results$forward),
+min(backwards.2008.results$forward.mse),
+min(cv.err.2008.results$backward),
+min(best.subset.2008.result$best.subset.mse),
+min(cv.err.2008.results$best.subset),
+ridge.2008$mse,
+lasso.2008$mse,
+pcr.2008.best$best.mse,
+pls.2008.best$best.mse,
+hfi.2008.list$tss
+), nrow=13, ncol=2) 
+colnames(x) <- c("Method","test MSE")
+
+df.x.all.2008 = as.data.frame(x, row.names = list.x.axis)
+df.x.all.2008$`test MSE` = round(as.numeric(as.character(df.x.all.2008[["test MSE"]])), 5)
+df.x.all.2008
+```
+
+## 2016
+
+### Full Model
+
+```{r}
+lm.fit.2016 = lm(hf_score ~ . -year, data = hfi.2016.list[["train"]])
+lm.preds = predict(lm.fit.2016, newdata = hfi.2016.list[["test"]])
+# get MSE and R^2 (just 1 - MSE/MEAN(TSS) === 1 - RSS/TSS)
+mse.lm.2016 = mean((lm.preds - hfi.2016.list[["test"]]$hf_score)^2)
+lm.r2 = 1 - (mse.lm.2016/hfi.2016.list[["tss.test"]])
+mse.lm.2016
+lm.r2
+```
+
+### Best-Subset
+```{r}
+max.variables.to.run = ncol(hfi.2016.list$train) - 2
+best.subset.2016.result = get.best.subset(hfi.2016.list$train, hfi.2016.list$test, 
+                                          hfi.2016.list$tss.test, max.variables.to.run)
+
+print.out.graphs.lm(best.subset.2016.result, 
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Best-Subset")
+```
+
+
+### Forward Selection
+
+```{r}
+forward.2016.results = do.selection.methods(hfi.2016.list$train, hfi.2016.list$test, 
+                                            hfi.2016.list$tss.test, ncol(hfi.2016.list$test)-2, 
+                                            type = "forward")
+
+print.out.graphs.lm(forward.2016.results, 
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Forward-Selection")
+```
+
+
+### Backward Selection
+
+```{r}
+backwards.2016.results = do.selection.methods(hfi.2016.list$train, hfi.2016.list$test, 
+                                              hfi.2016.list$tss.test, ncol(hfi.2016.list$test)-2,
+                                              type = "backwards")
+
+print.out.graphs.lm(backwards.2016.results,
+                    harsh.penalty = harsh.penalty, 
+                    title.name = "Backwards-Selection")
+
+```
+
+### CV Errors:
+
+This is the metric that should be used for sure!!
+
+```{r message=FALSE}
+dataset.hfi = hfi.2016.list$train %>% full_join(hfi.2016.list$test)
+
+cv.err.2016.results = list()
+cv.err.2016.results[["forward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                                 regression.results = forward.2016.results)
+cv.err.2016.results[["backward"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                           regression.results = backwards.2016.results)
+cv.err.2016.results[["best.subset"]] = get.cv.errors(data.hfi = dataset.hfi, 
+                                              regression.results = best.subset.2016.result)
+
+cv.full.lm = cv.glm(data = dataset.hfi, K = 10, glmfit = glm(formula = hf_score ~ . -year, data = dataset.hfi))
+
+cv.full.lm.err = cv.full.lm$delta[1]
+cv.err.2016.results[["full.lm"]] = cv.full.lm.err
+
+
+plot.cv.errors(cv.err.2016.results$forward, title.string = "Forward Selected Models")
+plot.cv.errors(cv.err.2016.results$backward, title.string = "Backward Selected Models")
+plot.cv.errors(cv.err.2016.results$best.subset, title.string = "Best-Subset Selected Models")
+```
+
+```{r}
+# These are the errors from the best subset models with the lowest errors:
+which.min(cv.err.2016.results$forward)
+cv.err.2016.results$forward[which.min(cv.err.2016.results$forward)]
+
+which.min(cv.err.2016.results$best.subset)
+cv.err.2016.results$best.subset[which.min(cv.err.2016.results$best.subset)]
+
+# total preds (-1 because 1 is year that is unused)
+ncol(hfi.features)-1
+cv.err.2016.results$full.lm
+hfi.2016.list$tss
+```
+
+```{r}
+coef(forward.2016.results$model,  which.min(cv.err.2016.results$forward))
+```
+
+```{r}
+coef(backwards.2016.results$model, which.min(cv.err.2016.results$backward))
+```
+
+```{r}
+coef(best.subset.2016.result$model, which.min(cv.err.2016.results$best.subset))
+```
+
+
+### Ridge
+
+```{r}
+ridge.2016 = do.ridge.lasso(hfi.2016.list$train, 
+                            hfi.2016.list$test, 
+                            alpha=0)
+
+ridge.2016$model$beta
+ridge.2016$best.lambda
+ridge.2016$mse
+```
+
+
+### Lasso
+
+```{r}
+lasso.2016 = do.ridge.lasso(hfi.2016.list$train, 
+                            hfi.2016.list$test, 
+                            alpha=1)
+
+rownames.no.na = c()
+for (i in 1:length(rownames(lasso.2016$model$beta))){
+  if( lasso.2016$model$beta[i] != 0){
+    rownames.no.na = c(rownames.no.na, rownames(lasso.2016$model$beta)[i])
+  }
+}
+lasso.2016[["rownames.left"]] = rownames.no.na
+
+lasso.2016$model$beta
+lasso.2016$best.lambda
+lasso.2016$mse
+lasso.2016$rownames.left
+```
+
+### PCR
+
+```{r}
+pcr.2016.model = pcr(hf_score ~ . -year ,  scale = TRUE,
+                     data = hfi.2016.list$train, validation = "CV")
+print(validationplot(pcr.2016.model, val.type = "MSEP"))
+```
+
+```{r}
+pcr.2016.best = find.best.mse.pcr.pls(pcr.2016.model, hfi.2008.list$test)
+pcr.2016.best$min.val
+pcr.2016.best$best.mse
+```
+
+### PLSR
+
+```{r}
+# create pls model and plot validation; report the best mse
+pls.2016.model = plsr(hf_score ~ . -year, scale = TRUE, 
+                 data = hfi.2016.list$train, validation = "CV")
+validationplot(pls.2016.model, val.type = "MSEP")
+```
+
+```{r}
+pls.2016.best = find.best.mse.pcr.pls(pls.2016.model, hfi.2016.list$test)
+pls.2016.best$min.val
+pls.2016.best$best.mse
+```
+
+### Matrix of Results 2008
+
+```{r}
+x = matrix(data=
+           c("Full OLS, 39 Predictors (test/train)",
+             "Full OLS, 39 Predictors (10-fold CV)",
+             paste0("Forward Select, ", which.min(forward.2016.results$forward.mse), " Predictors (test/train)"),
+             paste0("Forward Select, ", which.min(cv.err.2016.results$forward), " Predictors (10-fold CV)"),
+             paste0("Backward Select, ", which.min(backwards.2016.results$forward.mse)," Predictors (test/train)"), 
+             paste0("Backward Select, ", which.min(cv.err.2016.results$backward), " Predictors (10-fold CV)"), 
+             paste0("Best Subset, ", which.min(best.subset.2016.result$best.subset.mse)," Predictors (test/train)"),
+             paste0("Best Subset, ", which.min(cv.err.2016.results$best.subset), " Predictors (10-fold CV)"),
+             paste0("Ridge, ", length(ridge.2016$model$beta), " Predictors (test/train)"),
+             paste0("Lasso, ", length(lasso.2016$rownames.left), " Predictors (test/train)"),
+             paste0("PCR, ", pcr.2016.best$min.val ," Components, (test/train)"),
+             paste0("PLS, ", pls.2016.best$min.val, " Components, (test/train)"),
+             "Mean TSS",
+mse.lm.2016,
+cv.err.2016.results$full.lm,
+min(forward.2016.results$forward.mse), # fit 3
+min(cv.err.2016.results$forward),
+min(backwards.2016.results$forward.mse),
+min(cv.err.2016.results$backward),
+min(best.subset.2016.result$best.subset.mse),
+min(cv.err.2016.results$best.subset),
+ridge.2016$mse,
+lasso.2016$mse,
+pcr.2016.best$best.mse,
+pls.2016.best$best.mse,
+hfi.2016.list$tss
+), nrow=13, ncol=2) 
+colnames(x) <- c("Method","test MSE")
+x
+
+df.x.all.2016 = as.data.frame(x, row.names = list.x.axis)
+df.x.all.2016$`test MSE` = round(as.numeric(as.character(df.x.all.2016[["test MSE"]])), 5)
+df.x.all.2016
+```
+
+```{r}
+print("The 2008 Results:")
+names(coef(forward.2008.results$model, which.min(cv.err.2008.results$forward)))
+
+print("The 2016 Results:")
+names(coef(forward.2016.results$model, which.min(cv.err.2016.results$forward)))
+
+print("The Outlier Results:")
+names(coef(forward.no.outlier.result$model, which.min(cv.err.no.outlier.results$forward)))
+
+print("The No Outlier Results:")
+names(coef(forward.results$model, which.min(cv.err.results$forward)))
+
+
+```
+
+```{r}
+```
+
+
+
