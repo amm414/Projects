@@ -1,3 +1,9 @@
+# This Folder Contains Data Analysis and Code
+
+This folder contains the unfiltered code and data analysis. I recommend only looking over this folder if you 
+wish to understand, view, or critique (would love that) the analysis completed. Otherwise, if you wish to view 
+the more...comprehendable conclusion and insights, return to the directory above [here](https://github.com/amm414/Projects/tree/master/WrittenPosts/DataAnalyses).
+
 # Analysis of the Human Freedom Index 
 
 This is the Repo for the Analysis of Cato Institute's Human Freedom Index.
