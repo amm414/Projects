@@ -1,4 +1,10 @@
-# Analysis of the Human Freedom Index 
+# This Folder Contains Data Analysis and Code
+
+This folder contains the unfiltered code and data analysis. I recommend only looking over this folder if you 
+wish to understand, view, or critique (would love that) the analysis completed. Otherwise, if you wish to view 
+the more...comprehendable conclusion and insights, return to the directory above [here](https://github.com/amm414/Projects/tree/master/WrittenPosts/DataAnalyses).
+
+## Analysis of the Human Freedom Index 
 
 This is the Repo for the Analysis of Cato Institute's Human Freedom Index.
 
@@ -10,7 +16,7 @@ Dataset Aquired at Kaggle:
 
 https://www.kaggle.com/gsutters/the-human-freedom-index
 
-# Inside the Repo:
+## Inside the Repo:
 
 The RMarkdown files, R scripts, knitted PDFs, and the dataset itself are located in this directory. 
 In order to run the script, the user must correctly identify the correct path that the dataset is on the hard drive. 
