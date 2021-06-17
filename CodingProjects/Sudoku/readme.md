@@ -4,4 +4,4 @@
 
 ### The Documentation here is Light for now...
 
-The requirements to run are python (version 3), Math (sqrt), Random (choice, randint)
+The requirements to run are python (version 3), Math (sqrt), Random (choice, randint), intertools (default), time (default)
