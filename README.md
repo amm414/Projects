@@ -8,50 +8,35 @@ Publicly Available Projects.  Both from school and personal projects.  These are
 This Repo is for projects and files to be shared publicly from my personal projects and website. A significant amount of content will be for:
 
 - Data Science: analysis of various datasets; namely in **R** and **Python** and possibly in Java at a later point.
-- Economic Analyses: pet projects that typically analyze economic/income/wealth inequality and effects on economic growth (basically macroeconomics)
-- Coding Projects: samller coding projects that can be run in one's own local setup (ideally); typically **Python** though possibly Java and other languages I wish to improve or learn; example projects would be a Sudoku Solver or Webscrapper for Craigslist
+- Economic Analyses: pet projects that typically analyze economic/income/wealth inequality and effects on economic 
+  growth (basically macroeconomics)
+- Coding Projects: smaller coding projects that can be run in one's own local setup (ideally); 
+  typically **Python** though possibly Java and other languages I wish to improve or learn
 - Applications: I may add application source code (though possibly only components)
 
 
+## Table of Contents:
 
-## Here is the Bio from my GitHub Account:
+- [Data Analysis of the CATO Institute's Human Freedom Index](https://github.com/amm414/Projects/tree/master/WrittenPosts/DataAnalyses/HumanFreedomIndex/AnalysisOfHumanFreedomIndex)
 
-- 👋 Hi, I’m @amm414. I graduated from Pitt in the winter of 2019. I have a double major in Computer Science and Economics-Statistics. 
+- [Sudoku Puzzle: N by N Puzzles](https://github.com/amm414/Projects/tree/master/CodingProjects/Sudoku)
+
+- **Economic Analyses:**
+  - [The Overview of the 2008 Housing Bubble and Aftermath](https://github.com/amm414/Projects/tree/master/WrittenPosts/EconomicPapers/HousingCrisis2008)
+  - [A Study of the United States' Increasing Human Capital Throughout the 20th Century](https://github.com/amm414/Projects/tree/master/WrittenPosts/EconomicPapers/USAEducation20thCentury)
 
 
-- 👀 I’m interested in many different areas. 
- 
-  + In programming, I find my interests lie in developing the backend of applications and algorithms that oganize and gain insights from data. 
+## Other Repositories:
+
+- CraigVersity: A web application designed to be like Craigslist for universities by a group of 5 (including myself). 
+  It allows students, staff, and faculty to post goods, services, opportunities for sale. The application is the 
+  prototype for a Software Engineering class from the 2019 Fall Semester at Pitt. **This repo will be available shortly.**
   
-  + As a CS and Stat major, I find data science and machine learning to be very interesting. I am trying to learn new techniques
-  and methods to analyze big data and high dimensional data. With these techniques, I am trying to analyze US Census data with regards to education and income.
-
-  + As an economist with a programming and statistical background, I am interested in utility theory and behaviorial economics. These directly connect with my 
-  underlying interest in Artificial Intelligence as these areas of economics can help improve AI models and agents. A current project I am working on is agent-based 
-  models, where agents defined by their utility functions and preferences put into a psecific situation. 
-  
-  + As an economist macroeconomic trends and events. Some macroeconomic trends and events that interest me are the 2008 recession and financial collaspe, 
-  income and wealth trends, and the effects and evolution of education on the GDP and global markets. 
-
-
-
-- 🌱 I’m currently learning:
-  
-  + Technically Full Stack web programming with Python and Flask. The frontend utilizes basic JavaScript and Bootstrap to create a 
-  simple and responsive website which holds my projects I have finished, new projects I am working on to become more knowledgeable 
-  of the domains I am interested in, and present and market myself as a good hire for any firm. 
-  
-  + Agent-Based Modeling and AI agent decision making. Utilizing probabilistic decision making and stochastic events to analyze situations like the 
-  Schelling segregation model that shows that even without racist agents, neighborhoods naturally trend towards homogeneity rather than heterogeneity. 
-  
-  + Data Science techniques utilizing Python. Primarily to analyze education and income/wealth data from the Census and Bureau of Labor Statistics. 
-  I have worked previous projects that utilized R, but I am trying to familiarize myself with Python's many libraries for data science. 
-
-
-- 📫 How to reach me:
-  + For now, please reach me via GitHub, as I do not wish to put any other contact information on the web. 
-
-
+- Agent-Based Modeling: My personal project surrounding my interest in simulating models of individual, autonomous 
+  agents interacting. These models (or systems) tend to show how macro-level trends occur naturally through these 
+  individual interactions of agents. I hope to create a framework that can be used with different models. This project 
+  ties my interests like artificial intelligence, utility theory, optimization theory, statistics, and modeling together
+  into a singular project. **This repo will be available shortly.**
 
 
 <!---

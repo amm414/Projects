@@ -1,23 +1,73 @@
 ---
 title: 'Appendix 4: Documentation of Code'
 author: "Max Harleman, Chris Moloney, Minbae Lee, Dan Kardish, Andrew Morgan"
-date: "April 8, 2019"
+date: "April 8, 2019; Updated July - August 2021 by Andrew Morgan"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
   word_document: default
 ---
 
+# Brief Introduction and Summary:
+
+This file is a compilation of various statistical learning methods we (Max Harleman, Chris Moloney, Minbae Lee, Dan Kardish, Andrew Morgan) performed as a group on the CATO Human Freedom Index that measures human freedom throughout the world on a country-level. This analysis was completed for Statistical Learning course at the University of Pittsburgh in the Spring of 2019. The project had several parts including finding the dataset, performing various methods (as shown in this markdown file), the conclusions of findings (this markdown file and report we wrote as individuals), and a group presentation. We recommend only reading through (or downloading the R-Markdown file) if you are interested in the details of the methods performed or the code we wrote. 
+
+The **primary** task of the project was to use real data and various statistical methods learned in class to demonstrate the pros and cons each method possesses. The class had a heavy focus on the concept of the bias-variance tradeoff. Meaning some models may capture less variance by being more biased than others (like multiple linear regression). Or models may capture a lot of variance, but have very little bias (random forests or neural networks). High bias tends to allow for more inferencing to analyze the effects of specific predictors. High variance tends to fit the data better (guaranteed on training set), however the accuracy may falter if the model is overfit (big issue with high-variance models like neural networks). The methods used are multiple linear regression (MLR), bootstrapping (primarily cross-validation), polynomial regression, splines, GAMs (Generalized Additive Models), KNN regression, decision trees, random forest (bagging), boosting. Some other models not seen here are related to classification (our dataset is a regression problem) like linear discriminant analysis (LDA) and quadratic discriminant analysis (QDA).
+
+The **secondary** task of the project is to determine the most significant predictors of human freedom. The dataset is large (39 predictors, and 1305 observations after data tidying). By determining the most significant predictors, we should have a better grasp of what determines human freedom. Then, we will create a smaller model (~10 predictors) to try and capture the greatest amount of variance possible within the dataset. If this smaller model is relatively close to the most accurate models, we can assert that the human freedom index could be simplified. An important note here is that this task is largely based around **inferenceing** which some models perform better than others. The models that have better inferencing tend to have biased models to allow for these inferences (again like multiple linear regression). Hence, some models could more accurate, but due to limited inferencing to determine those significant predictors, we may decide to not focus on that model (unless the accuracy is significantly better than the preferred model).
+
+#### Another Note: We decided on using a random seed to get consistent results for our analysis. Obviously this will bias the dataset, so we chose the number '111' as the seed value at the begining of the analysis before using any methods. This number was randomly chosen, and will constantly appear with the comman 'set.seed(111)' at the start of many code chunks. 
+
+\bigskip
+
+# Andrew's Website Changes
+
+In the Summer of 2021, I (Andrew), have modified the project in certain ways including the Markdown file and the Rendered PDF and HTML files.
+
+## Changelog
+
+The Goal: Get the project into a state I am proud of and displays some of my statistical learning skills.  
+
+Overall the changes are made as an improvement over the existing code. Most of the code was initially written by Max and Myself (Andrew), as we had the most programming experience of the group. **I believe Max Harleman's work on the project was incredible and much credit for this code needs to go to him!**
+
+- Primary reason for the alterations is to reacquaint myself with the project, dataset, and packages used. 
+
+- Secondary reason for the changes are to improve the visualizations for my written summary about this project's findings. 
+
+- Tertiary reason for the changes is some large errors were found and refactoring was desired due to inconsistent naming, syntax, spacing.
+
+
+
+- **Fixed the major Error.** The test set not being held out from training some models. Often we seemed to use the combined (train + test) for cross-validation to find the better estimate of the MSE. Then, we take the best cross-validated model and test it against the test set (but it was trained on that data as well), making some conclusions very wrong. Luckily, the findings are not really affected by this potentially catastrophic error.
+
+- Improvements to graphs and visualizations. I improved the descriptions (labels and points) within the graphs and added new graphs as visualizations for my written post on my website.
+
+- Many of my changes result in more time, memory, and resource consumption. This is unfortunate, but I believe the results are now more robust and less biased.
+
+- Refactoring: I revised the code to have better style, syntax, and flexibility. Additionally, some errors were discovered that we missed over 2 years ago. 
+
+- Restructure and Reorganized: I reorganized the code to be more concise and explicit about tasks and methods used. Additionally, some code was rearranged to be in a more logical spot in terms of part of the analysis it should/had been performed.
+
+- Areas Expanded: Non-linear section with polynomial regression, splines, and GAMS were improved to test more models than there were initially. The Findings do not seem to change the final conclusions much (the models are significantly more accurate, but still not preferable to the MLR models).
+
+- Areas with Major Refactoring: I improved the multiple linear regression section (more analysis of best models found), tree-based methods (decision trees, random forests, boosting; focus on the most important predictors within models), 
+
+- A larger focus in conclusion about our "Final" model(s). I create a final models using the predictors we isolated as most significant (I added some additional as I believe we missed some. The models used in this section were MLR, MLR with polynomial terms, Random Forest, and Boosting. 
+
+\bigskip
+\newpage
+
 # 1. Data Cleaning and Setup:
 
-## 1.1 Removing Heavily Correlated Features
+## 1.1 Load the Libraries
 
-Many variables (like pf_rol or pf_ss) are aggregates of more specific Rule-of-Law (rol) and security and safety (ss) features. They seem to do a simple average, which causes the more specific variables to have a lower impact on hf_score. The following code removes them:
-
-```{r echo=FALSE, warning=FALSE, message=FALSE}
-rm(list = ls())
+```{r load_libraries, echo=FALSE, warning=FALSE, message=FALSE}
+# load the libraries needed. delete all list (memory stored values)
+# rm(list = ls())
 library(gbm)
+library(reshape2)
+library(ggplot2)
 library(calibrate)
 library(gam)
 library(boot)
@@ -33,1061 +83,1994 @@ library(leaps)
 library (tree)
 library(rpart.plot)
 library(randomForest)
-#human.freedom.index = read.csv(file = "C:/Users/mrh105/Box Sync/Stat 1361_2360 Project/hfi_cc_2018.csv")
-human.freedom.index = read.csv(file = "C:/GitHub/Private-Projects/School/2019-Spring/STAT - Statistical Learning and Data Science/Project/Actual project/the-human-freedom-index/hfi_cc_2018.csv")##
+```
+
+\bigskip
+
+# 1.2 
+
+The following Code aims to load, tidy, and format the data and resulting dataframe into a state that can be easily manipulated, altered, and used for the following methods. The goals are as follows:
+
+- Many variables are related and explain the same thing as aggregates for more specific metrics already captured. For example, there is a predictor that measures the amount of personal freedom with respect to the rule-of-law of the land that is an average (or aggregate) of more specific predictors like security, protection of private property, safety for citizens from murder or kidnappings. We remove the aggregate, while including the specific predictors. 
+
+- We remove columns with a large number of NAs. This is far from ideal, but we have no good way of estimating these values. These columns that are removed, frankly are not terribly important, and were only added to the dataset in more recent years.
+
+- We tested the dataset for leverage points and outliers. We found and removed these observations using code found here: https://stats.stackexchange.com/questions/164099/removing-outliers-based-on-cooks-distance-in-r-language/345040.
+
+- Now we need to convert the data to a dataframe ready for analysis. This dataframe then needs to be split into a train and test set (80:20). The train and test sets are used for getting a more accurate and less biased estimate of the MSE (mean-squared error) from our models. 
+
+
+```{r intro_and_data_tidying, warning=FALSE, message=FALSE}
+################################   GET DATA READY   ###########################
+
+#######  THE FILE LOCATION MAY NOT BE RIGHT, YOU NEED TO CORRECT IT  ##########
+# Read in the dataset
+hfi_data = read.csv(file = "C:/GitHub/Private-Projects/School/2019-Spring/STAT - Statistical Learning and Data Science/Project/Actual project/the-human-freedom-index/hfi_cc_2018.csv")##
+###############################################################################
+
+
+## Creating a county by year row names as the new 'identifier' or primary key
+country= hfi_data$countries
+year= hfi_data$year
+co_year= paste(country, year, sep = " ", collapse = NULL)
+hfi_data= data.frame(co_year, hfi_data)
+hfi_data$ISO_code <- NULL
+hfi_data$countries <- NULL
+hfi_data$region <- NULL
+hfi_data$year <- NULL
+rownames(hfi_data)=hfi_data[,1]
+hfi_data$co_year <- NULL
+
+# Get the # columns and # rows before removing the columns and rows with N/A's
+# nrow(hfi_data)
+# ncol(hfi_data)
+
+# Start adding columns/variables to remove. 
+# These vars are aggragates of other variables listed, and therefore we remove.
 cols_to_remove = c("pf_rol", "pf_ss", "pf_movement", "pf_ss_women", "pf_religion", 
                    "pf_association", "pf_expression", "pf_identity", "pf_score", "pf_rank",
                    "ef_government", "ef_legal", "ef_money", "ef_trade", "ef_regulation", 
                    "ef_score", "ef_rank", "pf_identity_sex", "ef_trade_movement", 
                    "pf_ss_disappearances", "ef_regulation_labor", "ef_regulation_business")
-human.freedom.index = human.freedom.index %>% dplyr::select(-cols_to_remove)
-```
+hfi_data = hfi_data %>% dplyr::select(-cols_to_remove)
 
-```{r}
-## Creating a county by year row names
-  country= human.freedom.index$countries
-  year= human.freedom.index$year
-  co_year= paste(country, year, sep = " ", collapse = NULL)
-  human.freedom.index= data.frame(co_year, human.freedom.index)
-  human.freedom.index$ISO_code <- NULL
-  human.freedom.index$countries <- NULL
-  human.freedom.index$region <- NULL
-  human.freedom.index$year <- NULL
-  rownames(human.freedom.index)=human.freedom.index[,1]
-  human.freedom.index$co_year <- NULL
-
-```
-
-\bigskip
-
-## 1.2 Removing Columns with Many NAs
-
-The following code reduces the dataset to `r ncol(human.freedom.index)` columns, which is more than a 50% reduction in features. Of the columns, 1 is the response **hf_score**, and two are alternative categorical responses (hf_rank (rank of the hf_scores), hf_quartile (the quartile of hf_scores)).
-
-
-```{r}
-cols.to.drop2 = list()    # will create list of column names to drop from dataset
-list_counter = 1          # index for the list() object
-for (i in 1:ncol(human.freedom.index)){
+# Second batch of columns to remove
+# This finds columns with less consistent values for a given country
+# Remove if there are many (100+) N/A's for a given variable/predictor
+cols_to_remove = list()
+list_counter = 1
+for (i in 1:ncol(hfi_data)){
   # checking if the number of N/A's is 100 or more
-  #     (seemed good with preliminary inspection)
-  if(sum(is.na(human.freedom.index[,i])) >= 100 ){
+  if(sum(is.na(hfi_data[,i])) >= 100 ){
     # append the column name that has 100+ N/A's 
-    cols.to.drop2[[list_counter]] = colnames(human.freedom.index[i])
+    cols_to_remove[[list_counter]] = colnames(hfi_data[i])
     list_counter = list_counter + 1     # update the counter
   }
 }
-# now to 'vectorize' the list by unlist()-ing
-cols.to.drop2 = unlist(cols.to.drop2)
-ncol(human.freedom.index)   # number of features BEFORE dropping
-human.freedom.index = human.freedom.index %>%
-  dplyr::select(-cols.to.drop2) 
-ncol(human.freedom.index)   # number of features AFTER dropping due to NAs
+cols_to_remove = unlist(cols_to_remove)  # creates a vector to use with dyplr
+hfi_data = hfi_data %>% dplyr::select(-cols_to_remove)
 
-nrow(human.freedom.index)   # number of rows BEFORE dropping 
-# drop rows with ANY N/A's (this will bias the dataset)
-human.freedom.index = human.freedom.index %>% na.omit()
-nrow(human.freedom.index)   # number of rows AFTER dropping due to NAs
+# After removing the columns producing significant number of N/A's
+# Remove all observations that still have miscellaneous N/A's 
+hfi_data = hfi_data %>% na.omit()
+
+# Get the # columns and # rows after removing dimensions and observations
+# nrow(hfi_data)
+# ncol(hfi_data)
+
+# the list of columns that relate to human freedom score (the response) to ignore
+responses = c("hf_rank", "hf_quartile")
+hfi_data_features = hfi_data %>% dplyr::select(-(c(responses, "hf_score"))) 
+hfi_data_combined = hfi_data %>% dplyr::select(-responses)
+
+# Get the # columns and # rows after removing dimensions and observations
+# nrow(hfi_data)
+# ncol(hfi_data)
+
+# simply used to get same results regardless of run. Methods should be robust to the seed changing, though
+set.seed(111) 
+
+# create the Training and Testing Set
+hfi_data_combined_train = hfi_data_combined %>% sample_frac(size = .8)
+hfi_data_combined_test = hfi_data_combined %>% setdiff(hfi_data_combined_train)
+
+# get the Mean-TSS of the Training and Testing Sets; Use for judging effectiveness
+mean_tss_combined = mean((mean(hfi_data_combined$hf_score) - hfi_data_combined$hf_score)^2)
+mean_tss_train = mean((mean(hfi_data_combined_train$hf_score) - hfi_data_combined_train$hf_score)^2)
+mean_tss_test = mean((mean(hfi_data_combined_test$hf_score) - hfi_data_combined_test$hf_score)^2)
 ```
 
+The most important takeaway is the estimates for Mean Total Sums Squared (mean TSS). These values represent the expected variance using just the average human freedom score (the response) instead of a more complex model (it is simply an intercept = mean(hf_score)). The point is to see how much more variance is explained from other models using the resulting Mean Squared Error (MSE). However, the MSE is averaged, so we take the average of the TSS to result in the mean TSS in order to have comparable values. The Mean TSS is primarily used to judge a model's test MSE (the MSE from a model on NEW data the model has never seen). 
+
+- Mean TSS for all the observations (combined test and train dataset): `r mean_tss_combined`
+
+- Mean TSS for all the *training* observations: `r mean_tss_train`
+
+- Mean TSS for all the *testing* observations: `r mean_tss_test` (the most important one to compare models' MSEs)
+
 \bigskip
+\newpage
 
-## 1.3 Removing Outliers and Leverage Points
+# 2. Exploratory Analysis
 
-We have some outliers and leverage points, we remove them with code found here: https://stats.stackexchange.com/questions/164099/removing-outliers-based-on-cooks-distance-in-r-language/345040
+## Create a Correlation Matrix with Permutation Testing
 
-\bigskip
+The first exploratory analysis will be to create a correlation matrix to analyze how linearly correlated the features of the dataset are. The primary focus will be on the Human Freedom Score (hf_score) that measures human freedom within a given country. The hf_score will be located on the very first row of the matrix (first element) and the far right column (last element in columns). The matrix is split into 2 different measurements:
 
-## 1.4 Creating Dataframes for Analysis:
+- Top-Left of the matrix is the permutation testing results. Permutation testing uses bootstrap-like techniques to get a better estimate of the correlation. If there is a black dot for a row, column pair, that means the pair of features are significantly correlated (most likely not a correlation of 0).
 
-```{r}
-# vector of all column names that are responses (or forms of the responses)
-responses = c("hf_score", "hf_rank", "hf_quartile")
-# vector of main response 
-main.response = responses[1]
-# vector of all non-features MINUS hf_score (primary response is retained)  
-other.response = responses[-1]
+- Bottom-Right of the matrix is the correlation values in different shades of red/orange and blue. The more red a row, column feature pair is, the more positively, linearly correlated the features are; the more blue indicates that there is a negatively, linearly correlated feature pair.
 
-# dataframe of features
-hfi.features = human.freedom.index %>% 
-  dplyr::select(-responses)
-# dataframe of main response
-hfi.response = human.freedom.index %>% 
-  dplyr::select(main.response)
-# dataframe of features AND hf_score
-hfi.combined = human.freedom.index %>% dplyr::select(-other.response)
+- The diagonal from top-right to bottom-left is the correlation of the same predictors (so the correlation of hf_score and hf_score, or pf_ss_homicide and pf_ss_homicide). These correlation values will always be +1 (dark red). These values should be ignored.
 
-# get the number of rows/cols in each 
-nrow(hfi.response)
-nrow(hfi.features)
-ncol(hfi.response)
-ncol(hfi.features)
+
+```{r correlation_matrix_permutation_testing, warning=FALSE}
+##############  CORRELATION WITH 'hf_score' RESPONSE   ####################
+# Get all correlations (will use the rest later for a correlation matrix)
+actual_correlation_matrix = cor(x = hfi_data_combined)
+hf_score_correlations = actual_correlation_matrix['hf_score', ]
+
+# This sorts the ACTUAL and MAGNITUDE of correlations
+actual_sorted_hf_score_correlations = sort(hf_score_correlations, decreasing = TRUE)
+abs_sorted_hf_score_correlations = sort(abs(hf_score_correlations), decreasing = TRUE)
+
+head(actual_sorted_hf_score_correlations, 10)
+tail(actual_sorted_hf_score_correlations, 4)
+head(abs_sorted_hf_score_correlations, 10)
+
+###############    Correlation Matrix Testing    #####################
+# Using Bootstrap Testing/Estimating to estimate Correlation throughout dataset
+# Useful for finding insights to how correlated data is with a more robust 
+#     correlation estimate
+nperms = 100 # smaller number of permutations to speed up processing  
+significance_level = 0.02  # better with the smaller nperms
+
+nperms = 1000  # a larger number, slow process
+significance_level = 0.005  # better with the larger nperms
+permutation_upper_estimate = data.frame(matrix(NA , 
+                                             ncol = ncol(hfi_data_combined), 
+                                             nrow = ncol(hfi_data_combined)),
+                                      row.names = rownames(actual_correlation_matrix))
+colnames(permutation_upper_estimate) = colnames(actual_correlation_matrix)
+
+permutation_lower_estimate = data.frame(matrix(NA , 
+                                             ncol = ncol(hfi_data_combined), 
+                                             nrow = ncol(hfi_data_combined)),
+                                      row.names = rownames(actual_correlation_matrix))
+colnames(permutation_lower_estimate) = colnames(actual_correlation_matrix)
+
+
+for ( i in 1:ncol(actual_correlation_matrix)){
+  for( j in 1:nrow(actual_correlation_matrix)){
+    if( i > j){
+      i_name = rownames(actual_correlation_matrix)[i]
+      j_name = rownames(actual_correlation_matrix)[i]
+      # ONLY do half the matrix
+      permutation_vector = rep(-10, nperms)
+      for (k in 1:nperms) {
+        suffle_i = sample(x = hfi_data_combined[, i_name], 
+                          size = nrow(hfi_data_combined), 
+                          replace = FALSE) 
+        permutation_vector[k] = cor(suffle_i, hfi_data_combined[, j_name])
+      }
+      permutation_lower_estimate[i,j] = quantile(permutation_vector, significance_level)
+      permutation_upper_estimate[i,j] = quantile(permutation_vector, 1-significance_level)
+    } else if (i == j){
+      # correlation of X an X is ALWAYS == 1
+      permutation_lower_estimate[i,j] = 1
+      permutation_upper_estimate[i,j] = 1
+    }
+  }  
+}
+
+# These functions get the Upper and Lower 'Triangles' of a correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+
+get_lower_tri<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+
+# Get All pairs of Vars that are significant via permutation testing
+is_significant = matrix(NA , ncol = ncol(hfi_data_combined), 
+                        nrow = ncol(hfi_data_combined), 
+                        dimnames = list(c(colnames(hfi_data_combined)), 
+                                        c(colnames(hfi_data_combined)))) 
+total = 0 
+count = 0
+col_names = colnames(hfi_data_combined)
+for ( i in 1:ncol(hfi_data_combined)){
+  for( j in 1:ncol(hfi_data_combined)){
+    if( i > j){
+      total = total + 1
+      if( permutation_lower_estimate[i,j] <= actual_correlation_matrix[i,j] & 
+          actual_correlation_matrix[i,j] <= permutation_upper_estimate[i,j] ){
+        is_significant[i, j] = NA  # this will remove the 'FALSE' values later
+      } else{
+        is_significant[i,j] = TRUE
+        count = count + 1
+      }
+    } 
+  }
+}
+
+rownames(is_significant)
+
+# Now to Combine into 1 dataframe
+upper_triangle = get_upper_tri(actual_correlation_matrix)
+lower_triangle = get_lower_tri(is_significant)
+
+melted_upper = melt(upper_triangle, na.rm = TRUE)
+melted_lower = melt(lower_triangle, na.rm = TRUE)
+colnames(melted_lower)[3] = "IsSignificant" 
+
+graph_df = melted_upper %>%full_join(melted_lower)
+graph_df$IsSignificant = as.factor(as.character(graph_df$IsSignificant))
+graph_df_final = graph_df %>% mutate(value = ifelse(is.na(value), 0, value))
+
+# Graph the Dataframe!
+ggplot(data = graph_df_final, aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white") + 
+  geom_point(aes(shape = IsSignificant, fill=value), size=2 ) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal() + 
+  scale_shape(guide = 'none') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(), 
+    axis.text.x = element_text(angle = 90),
+  ) +
+  coord_fixed() +
+  ggtitle("Correleation Plot with Permutation Testing Results", 
+          subtitle = paste0("Percentage of variable-pairs having significant correlation: ",
+                            ((round((count/total),3)) * 100), 
+                            "%\nSignificance level of ", significance_level*2, " (two-tailed)")) 
+
+# Graph the Dataframe! with no VARNAMES!
+ggplot(data = graph_df_final, aes(Var2, Var1, fill = value)) +
+  geom_tile(color = "white") + 
+  geom_point(aes(shape = IsSignificant, fill=value), size=2 ) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal() + 
+  scale_shape(guide = 'none') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(), 
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank()
+  ) +
+  coord_fixed() +
+  ggtitle("Correleation Plot with Permutation Testing Results", 
+          subtitle = paste0("Percentage of variable-pairs having significant correlation: ",
+                            ((round((count/total),3)) * 100), 
+                            "%\nSignificance level of ", significance_level*2, " (two-tailed)")) 
+
+
+# This is SUPER HIGH Correlation
+actual_correlation_matrix['ef_trade_regulatory', 
+                          'ef_trade_regulatory_compliance']
+
+
 ```
 
+At a glance, the color scheme indicates a lot of red, meaning many predictors are positively, linearly correlated with each other. Additionally, there are many black dots meaning almost all feature pairs are correlated with a 99% accuracy based on permutation testing. The hf_score (measuring the human freedom variable) is found on the first row (very top of matrix) and last column (far right of matrix). All but 1 variable seems to have correlation with hf_score. This finding indicates the multiple linear regression technique may yield very useful and accurate predictions. 
+
+The variables ef_trade_regulatory and ef_trade_regulatory_compliance are heavily correlated predictors. This does not surprise us as one deals with how harsh regulations are to businesses and the other is how strictly the country follows through. The countries with lenient policies will tend to have lacking enforcement, while heavily regulated economies will have their governments cracking down on companies breaking regulations. 
+
+This is an example of the significant correlation between the predictors within the dataset. This finding indicates the human freedom index can probably be measured will minimal loss in accuracy with fewer predictors. Additionally, the correlation may indicate confounding predictors. Confounding predictors are predictors that capture the same variance as the predictors themselves are heavily correlated (like ef_trade_regulatory and ef_trade_regulatory_compliance). These confounding variables are known to not improve model accuracy significantly if 1 exists within the model already.   
+
 \bigskip
+\newpage
 
-## 1.5 Creating Train and Test Sets
+# 3. Linear Regression and Model Selection Methods:
 
-```{r}
-# set the seed to 
+## 3.1 Best-Subset Model Selection
+
+The MLR selection technique to select the best model. We exhaustively look through all the permutations of the predictors with best-subset, and select the best model for each x-predictor subset. **This section takes time.**
+
+```{r best_subset}
+# Best-Subset
 set.seed(111)
-hfi.combined.train = hfi.combined %>% sample_frac(size = .8)
-hfi.combined.test = hfi.combined %>% setdiff(hfi.combined.train)
-tss.hf_score = mean((mean(hfi.combined$hf_score) -
-                        hfi.combined$hf_score)^2)
-tss.test.hf_score = mean((mean(hfi.combined.test$hf_score) -
-                        hfi.combined.test$hf_score)^2)
-# Total Sum of Squares AVERAGED (since we are dealing with MSE)
-tss.hf_score
-tss.test.hf_score
-```
+max_predictors_best_subset = 39   # set to max; can alter if takes too long
+# This trains *all* possible permutations for MLR of the data  
+best_subset_regression = regsubsets(hf_score ~ ., data = hfi_data_combined_train, 
+                                    method = "exhaustive", 
+                                    nvmax = max_predictors_best_subset, intercept = TRUE)
+result = summary(best_subset_regression)
 
-This separates into a 80-20 split between train-test sets. Then, we get the TSS for all residuals of the test set. This can then be used to get an R^2 with the test set later on. The test set tss TSS `r tss.test.hf_score`.
+# Now to find the Test Errors to judge which model is best!
+# Doing Generic MSE and AIC to penalize extra terms/predictors more
+best_subset_regression_test_mse = rep(-1, max_predictors_best_subset)
+best_subset_regression_test_aic = rep(-1, max_predictors_best_subset)
 
-```{r}
-rm(list_counter, main.response, other.response, responses)
-```
-
-\bigskip
-
-
-# 2. Linear Regression and Model Selection Methods:
-
-## 2.1 Train Test Split Estimates of Error
-
-### 2.1.1 Linear Regression with all 39 Predictors
-
-```{r}
-lm.fit = lm(hf_score ~ ., data = hfi.combined.train)
-lm.preds = predict(lm.fit, newdata = hfi.combined.test)
-# get MSE and R^2 (just 1 - MSE/MEAN(TSS) === 1 - RSS/TSS)
-mse.lm = mean((lm.preds - hfi.combined.test$hf_score)^2)
-lm.r2 = 1 - (mse.lm/tss.test.hf_score)
-mse.lm
-fit1= mse.lm
-summary(lm.fit)
-```
-
-The R^2 of the FULL model using Linear Regression is: `r lm.r2`. This is very high, and shows there is a lot of potential trying to predict with this dataset.
-
-\bigskip
-
-### 2.1.2 Best Subset Selection
-
-```{r}
-set.seed(111)
-max.predictors.for.bestsubset = ncol(hfi.features)
-best.subsets.reg = regsubsets(hf_score ~ ., data = hfi.combined.train, 
-                              nvmax = max.predictors.for.bestsubset, 
-                              intercept = TRUE)
-# store the results of the best-subset regressions
-result = summary(best.subsets.reg)
-# [commented out] this prints the various RSS's of best-subset
-```
-
-
-```{r}
-# vars for MSE and AIC for test sets
-set.seed(111)
-best.subset.mse = rep(-1, max.predictors.for.bestsubset)
-best.subset.mse.aic = rep(-1, max.predictors.for.bestsubset)
-
-for (i in 1:max.predictors.for.bestsubset){
-  coef.i = coef(best.subsets.reg, id = i)
-  temp.pred = as.matrix(
-    hfi.combined.test[,colnames(hfi.combined.test) %in% names(coef.i)] ) %*% 
-    coef.i[names(coef.i) %in% colnames(hfi.combined.test)] 
-  temp.pred = as.vector(temp.pred) + coef.i["(Intercept)"]
+for (i in 1:max_predictors_best_subset){
+  coef_i = coef(best_subset_regression, id = i)
+  yhat_temp = as.matrix(
+    hfi_data_combined_test[,colnames(hfi_data_combined_test) %in% names(coef_i)] ) %*% 
+    coef_i[names(coef_i) %in% colnames(hfi_data_combined_test)] 
+  yhat = as.vector(yhat_temp) + coef_i["(Intercept)"]
   # MSE = RSS / N (Average of Residuals)
-  best.subset.mse[i] = mean((temp.pred- hfi.combined.test$hf_score )^2)
+  best_subset_regression_test_mse[i] = mean((yhat- hfi_data_combined_test$hf_score )^2)
+  
   # AIC = 2*P + N * LOG(RSS/N) === 2*P + N * LOG(MSE) 
   # P = # predictors; N = number of obs in test set
-  
-  best.subset.mse.aic[i] = 2*i +
-    nrow(hfi.combined.test) * log(best.subset.mse[i], base = 10)
+  best_subset_regression_test_aic[i] = 2*i +
+    nrow(hfi_data_combined_test) * log(best_subset_regression_test_mse[i], base = 10)
 }
 
 # plot the regular MSE With highlighted min. point
-plot(best.subset.mse, main = "Best Subset Selection: MSE",
+plot(best_subset_regression_test_mse, main = "Best Subset Selection: MSE",
      xlab = 'Number of Predictors') + 
-  lines(x = 1:max.predictors.for.bestsubset, y=best.subset.mse) +
-  points(x=which.min(best.subset.mse), 
-         y=best.subset.mse[which.min(best.subset.mse)], 
+  lines(x = 1:max_predictors_best_subset, y=best_subset_regression_test_mse) +
+  points(x=which.min(best_subset_regression_test_mse), 
+         y=best_subset_regression_test_mse[which.min(best_subset_regression_test_mse)], 
          col = "red", pch = 16, cex = 1.5)
 
 # plot the AIC results With highlighted min. point
-plot(best.subset.mse.aic, main = "Best Subset Selection: AIC",
+plot(best_subset_regression_test_aic, main = "Best Subset Selection: AIC",
      xlab = 'Number of Predictors') +
-  lines(x = 1:max.predictors.for.bestsubset, y=best.subset.mse.aic) +
-  points(x=which.min(best.subset.mse.aic), 
-         y=best.subset.mse.aic[which.min(best.subset.mse.aic)], 
+  lines(x = 1:max_predictors_best_subset, y=best_subset_regression_test_aic) +
+  points(x=which.min(best_subset_regression_test_aic), 
+         y=best_subset_regression_test_aic[which.min(best_subset_regression_test_aic)], 
          col = "red", pch = 16, cex = 1.5)
 
-best.subset.mse[which.min(best.subset.mse)]
-best.subset.mse.aic[which.min(best.subset.mse.aic)]
-which.min(best.subset.mse)
-which.min(best.subset.mse.aic)
-fit5=best.subset.mse[which.min(best.subset.mse)]
+best_subset_regression_test_mse[which.min(best_subset_regression_test_mse)]
+best_subset_regression_test_aic[which.min(best_subset_regression_test_aic)]
+which.min(best_subset_regression_test_mse)  # Number of Predictors with Best MSE
+which.min(best_subset_regression_test_aic)  # Number of Predictors with Best AIC
+
 ```
 
+The best-subset model results in 2 different findings. We did a default best-subset selection and an AIC (penalizing larger, more complex models).
 
-We utilize a best subset model selection method that uses training RSS to define the best model of each size. The model with the lowest test MSE of `best.subset.mse[which.min(best.subset.mse)]`includes `which.min(best.subset.mse)` predictors. After reaching about 10 predictors, the test MSE started flattening, and decreasing only slightly. Overall, the best subset is relatively good at showing most important factors in hf_score.
+- the Default model returned an MSE of `r round(best_subset_regression_test_mse[which.min(best_subset_regression_test_mse)], 6)` and had `r which.min(best_subset_regression_test_mse)` number of predictors. 
+
+- the AIC (penalized) model returned an MSE of `r round(best_subset_regression_test_aic[which.min(best_subset_regression_test_aic)], 6)` and had `r which.min(best_subset_regression_test_aic)` number of predictors. 
+
+The default best-subset result indicates that all `r round(which.min(best_subset_regression_test_mse), 6)` predictors are needed to maximize accuracy. However, one needs to be cautious as the benefit of adding more than ~15 predictors seems to decline. The AIC model selection penalizes these larger models that inherently can predict more variance with the higher degrees of freedom. The AIC model is probably the better model as it is `r round(which.min(best_subset_regression_test_aic), 6)` number of predictors (less than the default).
 
 \bigskip
 
-### 2.1.3 Forward Model Selection
+## 3.2 Backward Deletion and Forward Selection
 
-Probably better approach than backwards, since we want to eliminate the most variables in order to find a sparse list of features to predict HFI score.
+To be honest, after the best-subset, these selection methods are more for our interest and intrigue. We completed these before best-subset initially (as best-subset takes a lot of time to run exhaustively). Therefore, we left these models in. We use the AIC to again penalize models that have many predictors. 
 
-```{r}
+```{r backward_forward_selection}
 set.seed(111)
-# set to 'forward' selection, allow max variables to be added
-forward.fit = regsubsets(hf_score ~ ., method = "forward",
-                         nvmax = ncol(hfi.features), data = hfi.combined.train)
-# create test model matrix to easily create the predictions
-test.model.matrix = model.matrix(hf_score ~ ., data = hfi.combined.test)
-# stor MSE and AIC results for the test set
-mse.forward = rep(-1, ncol(hfi.features))
-aic.mse.forward = rep(-1, ncol(hfi.features))
 
-for( i in 1:ncol(hfi.features)){
+
+# Forward Selection MLR Method
+forward_regression = regsubsets(hf_score ~ ., method = "forward", 
+                                nvmax = (ncol(hfi_data_combined_train)-1), 
+                                data = hfi_data_combined_train)
+# create test model matrix to easily create the predictions
+forward_regression_model_matrix = model.matrix(hf_score ~ ., data = hfi_data_combined_test)
+# store MSE and AIC results for the test set
+forward_regression_test_mse = rep(-1, (ncol(hfi_data_combined_train)-1))
+forward_regression_test_aic = rep(-1, (ncol(hfi_data_combined_train)-1))
+
+for( i in 1:(ncol(hfi_data_combined_train)-1)){
   # AGAIN, using pipes to efficiently create predictions
-  coef.i = coef(forward.fit, id = i)
-  preds = test.model.matrix[,names(coef.i)] %*% coef.i
+  coef_i = coef(forward_regression, id = i)
+  preds = forward_regression_model_matrix[,names(coef_i)] %*% coef_i
   # create the MSE and then AIC
-  mse.forward[i] = mean((preds - hfi.combined.test$hf_score)^2)
-  aic.mse.forward[i] = 2*length(coef.i) +
-    (nrow(hfi.combined.test))*log(mse.forward[i], base = 10)
+  forward_regression_test_mse[i] = mean((preds - hfi_data_combined_test$hf_score)^2)
+  forward_regression_test_aic[i] = 2*length(coef_i) +
+    (nrow(hfi_data_combined_test))*log(forward_regression_test_mse[i], base = 10)
 }
 
 # Plot the MSE and AIC results with the minimum point highlighted
-plot(x = 1:ncol(hfi.features), y = mse.forward, main = "Forward Selection",
-     ylab = "MSE Test Set", xlab = "Number of Predictors") +
-  points(x = which.min(mse.forward), 
-         y = mse.forward[which.min(mse.forward)], 
+plot(x = 1:(ncol(hfi_data_combined_train)-1), y = forward_regression_test_mse,
+     main = "Forward Selection", ylab = "Test Set MSE", 
+     xlab = "Number of Predictors") + 
+  points(x = which.min(forward_regression_test_mse),
+         y = forward_regression_test_mse[which.min(forward_regression_test_mse)], 
          col="red", pch=19, cex = 1.5) + 
-  lines(x = 1:ncol(hfi.features), y = mse.forward)
+  lines(x = 1:(ncol(hfi_data_combined_train)-1), y = forward_regression_test_mse)
 
-plot(x = 1:ncol(hfi.features), y = aic.mse.forward, main = "Forward Selection (AIC)",
-     ylab = "MSE Test Set", xlab = "Number of Predictors") +
-  points(x = which.min(aic.mse.forward), 
-         y = aic.mse.forward[which.min(aic.mse.forward)], 
+plot(x = 1:(ncol(hfi_data_combined_train)-1), y = forward_regression_test_aic, 
+     main = "Forward Selection (AIC)", ylab = "MSE Test Set", 
+     xlab = "Number of Predictors") +
+  points(x = which.min(forward_regression_test_aic), 
+         y = forward_regression_test_aic[which.min(forward_regression_test_aic)], 
          col="red", pch=19, cex = 1.5) + 
-  lines(x = 1:ncol(hfi.features), y = aic.mse.forward)
+  lines(x = 1:(ncol(hfi_data_combined_train)-1), y = forward_regression_test_aic)
 
-mse.forward[which.min(mse.forward)]
-aic.mse.forward[which.min(aic.mse.forward)]
-which.min(mse.forward)
-which.min(aic.mse.forward)
-fit3=mse.forward[which.min(mse.forward)]
-```
-
-We utilize a forward model selection method that uses training RSS to define the best model of each size. The model with the lowest test MSE of `r mse.forward[which.min(mse.forward)]`includes `r which.min(mse.forward)` predictors. Like best subset, after reaching about 10 predictors, the test MSE starts flattening as additional predictors are added. Overall, the best subset is relatively good at showing most important factors in hf_score.
-
-\bigskip
-
-## 2.2 Cross Validation Estimates of Error
-
-```{r}
-set.seed(111)
-# Set the number of folds for CV
-# This code collects the models as formulas that from forward and best-subset selection
-# The goal is to then take the formulas and run cross-validation
-
-cv.best.subset.err<- rep(NA, ncol(hfi.features))    
-cv.forward.err<- rep(NA, ncol(hfi.features))    
-
-number.of.folds = 10
-
-for(i in 1:ncol(hfi.features)){
-  
-formula.forward.mse = paste(names(coef(forward.fit, id = i))[-1], 
-                             collapse = " + " )
-formula.forward.mse = as.formula( paste("hf_score ~ ", formula.forward.mse, sep = ""))
+forward_regression_test_mse[which.min(forward_regression_test_mse)]
+forward_regression_test_aic[which.min(forward_regression_test_aic)]
+which.min(forward_regression_test_mse)
+which.min(forward_regression_test_aic)
 
 
-formula.best.sub.mse = paste( names(coef(best.subsets.reg,
-                                         id = i))[-1], 
-                                collapse = " + " )
-formula.best.sub.mse = as.formula( paste("hf_score ~ ", formula.best.sub.mse, sep = ""))
 
+# Backward Selection MLR Method
+backward_regression = regsubsets(hf_score ~ ., method = "backward", 
+                                nvmax = (ncol(hfi_data_combined_train)-1), 
+                                data = hfi_data_combined_train)
+# create test model matrix to easily create the predictions
+backward_regression_model_matrix = model.matrix(hf_score ~ ., data = hfi_data_combined_test)
+# store MSE and AIC results for the test set
+backward_regression_test_mse = rep(-1, (ncol(hfi_data_combined_train)-1))
+backward_regression_test_aic = rep(-1, (ncol(hfi_data_combined_train)-1))
 
-# NOW, use the GLM (generalized linear models) to calculate the Cross-Validated MSE
-
-cv.forward = cv.glm(data = hfi.combined, K = number.of.folds,
-                        glmfit = glm(formula = formula.forward.mse, data = hfi.combined))
-
-cv.forward.err[i] = cv.forward$delta[1]
-
-
-cv.best.subset = cv.glm(data = hfi.combined, K = number.of.folds,
-                        glmfit = glm(formula = formula.best.sub.mse, data = hfi.combined))
-
-cv.best.subset.err[i]= cv.best.subset$delta[1]
-
+for( i in 1:(ncol(hfi_data_combined_train)-1)){
+  # AGAIN, using pipes to efficiently create predictions
+  coef_i = coef(backward_regression, id = i)
+  preds = backward_regression_model_matrix[,names(coef_i)] %*% coef_i
+  # create the MSE and then AIC
+  backward_regression_test_mse[i] = mean((preds - hfi_data_combined_test$hf_score)^2)
+  backward_regression_test_aic[i] = 2*length(coef_i) +
+    (nrow(hfi_data_combined_test))*log(backward_regression_test_mse[i], base = 10)
 }
 
-cv.full.lm = cv.glm(data = hfi.combined, K = number.of.folds,
-                    glmfit = glm(formula = hf_score ~ ., data = hfi.combined))
+# Plot the MSE and AIC results with the minimum point highlighted
+plot(x = 1:(ncol(hfi_data_combined_train)-1), y = backward_regression_test_mse,
+     main = "Backward Selection", ylab = "Test Set MSE", 
+     xlab = "Number of Predictors") + 
+  points(x = which.min(backward_regression_test_mse),
+         y = backward_regression_test_mse[which.min(backward_regression_test_mse)], 
+         col="red", pch=19, cex = 1.5) + 
+  lines(x = 1:(ncol(hfi_data_combined_train)-1), y = backward_regression_test_mse)
 
-cv.full.lm.err = cv.full.lm$delta[1] 
+plot(x = 1:(ncol(hfi_data_combined_train)-1), y = backward_regression_test_aic, 
+     main = "Backward Selection (AIC)", ylab = "MSE Test Set", 
+     xlab = "Number of Predictors") +
+  points(x = which.min(backward_regression_test_aic), 
+         y = backward_regression_test_aic[which.min(backward_regression_test_aic)], 
+         col="red", pch=19, cex = 1.5) + 
+  lines(x = 1:(ncol(hfi_data_combined_train)-1), y = backward_regression_test_aic)
 
-plot(cv.forward.err, main="Forward Selection Models", xlab = "Number of Predictors", ylab = "CV Error", pch = 19, type = "b")
-points (which.min(cv.forward.err),cv.forward.err [which.min(cv.forward.err)], col ="red",cex=2,pch =19)
-
-plot(cv.forward.err, main="Best Subset Models", xlab = "Number of Predictors", ylab = "CV Error", pch = 19, type = "b")
-points (which.min(cv.best.subset.err),cv.best.subset.err[which.min(cv.best.subset.err)], col ="red",cex=2,pch =19)
-
-
-# These are the errors from the best subset models with the lowest errors:
- which.min(cv.forward.err)
- cv.forward.err [which.min(cv.forward.err)]
- fit4=cv.forward.err [which.min(cv.forward.err)]
- which.min(cv.best.subset.err)
- cv.best.subset.err[which.min(cv.best.subset.err)]
- fit6= cv.best.subset.err[which.min(cv.best.subset.err)]
- ncol(hfi.features)
- cv.full.lm.err
- fit2= cv.full.lm.err
- tss.hf_score
-
+backward_regression_test_mse[which.min(backward_regression_test_mse)]
+backward_regression_test_aic[which.min(backward_regression_test_aic)]
+which.min(backward_regression_test_mse)
+which.min(backward_regression_test_aic)
 ```
 
-The cross-validated errors are very similar. The full model does very well, but the smaller models capture almost the same exact amount of correlation. This cross-validation basically shows that the data is highly correlated, and a almost perfect model can be discovered, as the average TSS is `tss.hf_score`, which means that all of the models explain over 95% of the variance in the outcome variable
+The results from forward selection are similar to best-subset selection. The MSE of the default model (no penalizing for more complex models) is `r round(forward_regression_test_mse[which.min(forward_regression_test_mse)], 6)` with `r which.min(forward_regression_test_mse)` predictors. The AIC model (penalizing for more complexity) resulting in an MSE of `r round(forward_regression_test_aic[which.min(forward_regression_test_aic)], 6)` with `r which.min(forward_regression_test_aic)` predictors. Overall, forward selection comes close to the findings of best-subset.
 
-Here are the` which.min(cv.best.subset.err)` coefficients in the model with the lowest 10-fold CV Error, selected using best subset selection:
-
-```{r}
-coef(forward.fit,  which.min(cv.best.subset.err))
-```
-
-Additionally, here are the `which.min(cv.forward.err)` coefficients in the model with the lowest 10-fold CV Error, selected using forward selection:
-
-```{r}
-coef(best.subsets.reg, which.min(cv.forward.err))
-```
-
-It is encouraging that the models with the lowest 10-fold CV Error in forward and best subset selection selection include mostly the same predictors. They also show similar curves, in which reductions in 10-fold CV Error level off after adding about 10 predictors.
-
-```{r}
-rm(human.freedom.index, cv.best.subset, cv.forward, cv.full.lm, forward.fit, lm.fit, preds, result, test.model.matrix, aic.mse.forward, best.subset.mse, best.subset.mse.aic, coef.i, cv.best.subset.err, cv.forward.err, cv.full.lm.err, formula.best.sub.mse, formula.forward.mse, i, lm.preds, lm.r2, max.predictors.for.bestsubset, mse.forward, mse.lm, number.of.folds, temp.pred)
-```
+The results from the backward selection are similar to the best-subset selection. The MSE of the default model (no penalizing for more complex models) is `r round(backward_regression_test_mse[which.min(backward_regression_test_mse)], 6)` with `r which.min(backward_regression_test_mse)` predictors. The AIC model (penalizing for more complexity) resulting in an MSE of `r round(backward_regression_test_aic[which.min(backward_regression_test_aic)], 6)` with `r which.min(backward_regression_test_aic)` predictors. Overall, backward selection comes close to the findings of best-subset.
 
 \bigskip
 
+## 3.3 Cross-Validation and Our Preliminary Findings
 
-# 3  Additional Linear Model Selection and Regularization Methods:
+## 3.3.1 Implement Cross-Validation on the MLR Models from Above
 
-## 3.1 Shrinkage Methods
-### 3.1.1 Ridge Regression
+Cross-Validation utilizes bootstrapping to estimate the MSE in a more robust way to help avoid overfitting a model. We perform cross-validation using the best-subset, forward selection, and backwards deletion models generated above. We get a more robust error (MSE) estimate and take the best from each set of models before testing against the test set as "new" data.
 
-```{r}
+```{r cross_validated_mlr}
 set.seed(111)
-# grid holds the range of LAMBDA values we use
-grid = 10^seq(10,-2, length = 1000)
-# seperate into train and test MODEL.MATRIX objects (easier)
-train.model = model.matrix(hf_score ~ ., data = hfi.combined.train)[,-1]
-test.model = model.matrix(hf_score ~ ., data = hfi.combined.test)[,-1]
 
-# Perform Cross-Validation and test on the test set to get MSE's
+############################   CROSS-VALIDATION on MLR   ##################
+k_folds = 10
+par(mfrow=c(1,1))
 
-cv.ridge = cv.glmnet(train.model, hfi.combined.train$hf_score, alpha = 0, 
-                     lambda = grid, thresh = 1e-12)
-ridge.model = glmnet(train.model, hfi.combined.train$hf_score, alpha = 0, 
-                     lambda = cv.ridge$lambda.min, thresh = 1e-12)
+cv_best_subset_regression_mse = rep(NA, max_predictors_best_subset)  
+cv_forward_regression_mse = rep(NA, (ncol(hfi_data_combined)-1))  
+cv_backward_regression_mse = rep(NA, (ncol(hfi_data_combined)-1))  
 
-bestlam.ridge <- cv.ridge$lambda.min
-bestlam.ridge
-pred.ridge = predict(ridge.model, newx = test.model, s = cv.ridge$lambda.min)
-mse.ridge = mean((hfi.combined.test$hf_score - pred.ridge)^2)
+# iterate through all 39 dof for forward, backward and best-subset
+for (i in 1:(ncol(hfi_data_combined)-1)){
+  # Take the formula for given degree of freedom and set it up for CV
+  # Best-Subset Formula; if there is limit on @ predictors, do not calculate
+  if( i <= max_predictors_best_subset){
+    formula_best_subset_regression = paste( names(coef(best_subset_regression, id = i))[-1], 
+                                            collapse = " + " )
+    formula_best_subset_regression = as.formula( paste("hf_score ~ ", formula_best_subset_regression, sep = ""))
+    cv_best_subset_regression = cv.glm(data = hfi_data_combined_train, K = k_folds,
+                                       glmfit = glm(formula = formula_best_subset_regression,
+                                                    data = hfi_data_combined_train))
+    cv_best_subset_regression_mse[i] = cv_best_subset_regression$delta[1]
+  }
+  
+  # Forward Selection Formula
+  formula_forward_regression = paste(names(coef(forward_regression, id = i))[-1], 
+                                     collapse = " + " )
+  formula_forward_regression = as.formula( paste("hf_score ~ ", formula_forward_regression, sep = ""))
+  cv_forward_regression = cv.glm(data = hfi_data_combined_train, K = k_folds,
+                                 glmfit = glm(formula = formula_forward_regression,
+                                              data = hfi_data_combined_train))
+  cv_forward_regression_mse[i] = cv_forward_regression$delta[1]
+  
+  # Backward Selection Formula
+  formula_backward_regression = paste(names(coef(backward_regression, id = i))[-1], 
+                                     collapse = " + " )
+  formula_backward_regression = as.formula( paste("hf_score ~ ", formula_backward_regression, sep = ""))
+  cv_backward_regression = cv.glm(data = hfi_data_combined_train, K = k_folds,
+                                 glmfit = glm(formula = formula_backward_regression,
+                                              data = hfi_data_combined_train))
+  cv_backward_regression_mse[i] = cv_backward_regression$delta[1]  
+}
 
-ridge.model$beta
+# 1 by 3 graph plot
+par(mfrow=c(1,1))
+# Plots of the CV Errors for all 3 Methods
+plot(cv_best_subset_regression_mse, main="Best-Subset Selection Model - Cross Validated", 
+     xlab = "Number of Predictors (DoF)", ylab = "Average Cross Validation Error") +
+  points(which.min(cv_best_subset_regression_mse), cv_best_subset_regression_mse[which.min(cv_best_subset_regression_mse)],
+       col ="red", cex=2, pch =19) + 
+  lines(x = 1:(ncol(hfi_data_combined)-1), y = cv_best_subset_regression_mse) + 
+  text(x=which.min(cv_best_subset_regression_mse), y=min(cv_best_subset_regression_mse),
+       labels = paste(round(min(cv_best_subset_regression_mse), 4)), pos=3, cex=1.5) + 
+  text(x=20, y=max(cv_best_subset_regression_mse), 
+       labels = paste("Mean TSS =", round(mean_tss_combined, 4)), cex=1, pos=1)
 
-mse.ridge
-fit7=mse.ridge
+plot(cv_forward_regression_mse, main = "Forward Selection Model - Cross Validated", 
+     xlab = "Number of Predictors (DoF)", ylab = "Average Cross Validation Error") +
+  points(which.min(cv_forward_regression_mse), cv_forward_regression_mse[which.min(cv_forward_regression_mse)],
+       col ="red", cex=2, pch =19) +
+  lines(x = 1:(ncol(hfi_data_combined)-1), y = cv_forward_regression_mse) + 
+  text(x=which.min(cv_forward_regression_mse), y=min(cv_forward_regression_mse),
+       labels = paste(round(min(cv_forward_regression_mse), 4)), pos=3, cex=1.5) + 
+  text(x=20, y=max(cv_forward_regression_mse), 
+       labels = paste("Mean TSS =", round(mean_tss_combined, 4)), cex=1, pos=1)
+
+plot(cv_backward_regression_mse, main = "Backward Selection Model - Cross Validated", 
+     xlab = "Number of Predictors (DoF)", ylab = "Average Cross Validation Error") + 
+  points(which.min(cv_backward_regression_mse), cv_backward_regression_mse[which.min(cv_backward_regression_mse)],
+       col ="red", cex=2, pch =19) + 
+  lines(x = 1:(ncol(hfi_data_combined)-1), y = cv_backward_regression_mse) + 
+  text(x=which.min(cv_backward_regression_mse), y=min(cv_backward_regression_mse),
+       labels = paste(round(min(cv_backward_regression_mse), 4)), pos=3, cex=1.5) + 
+  text(x=20, y=max(cv_backward_regression_mse), 
+       labels = paste("Mean TSS =", round(mean_tss_combined, 4)), cex=1, pos=1)
+
+paste("Best-Subset MSE: ", cv_best_subset_regression_mse[which.min(cv_best_subset_regression_mse)], "; Number of predictors: ", which.min(cv_best_subset_regression_mse))
+
+paste("Forward Selection MSE: ", cv_forward_regression_mse[which.min(cv_forward_regression_mse)], "; Number of predictors: ", which.min(cv_forward_regression_mse))
+
+paste("Backward Deletion MSE: ", cv_backward_regression_mse[which.min(cv_backward_regression_mse)], "; Number of predictors: ", which.min(cv_backward_regression_mse))
 ```
 
-Using the 10-fold cross validated best lamba of about `r bestlam.ridge`, in the Ridge model all 39 variables remain in the model.The test MSE rises to `r mse.ridge` which is just slightly lower than the test MSE of OLS of `r fit1`.
+All 3 models have very low cross-validated MSEs around 0.0415 compared to the Mean TSS of `r round(mean_tss_train, 6)`. Roughly `r round((100 * (1 - 0.0415 / mean_tss_train)), 2)` % of variance is explained by all 3 best models. That result is incredibly good. This is odd that the results of multiple linear regression deliver such good results with out adding polynomial terms or interaction terms. This model is already useful enough to stop trying the other methods as MLR delivers high accuracy and very good inferencing for discovering the most significant predictors in terms of affecting the human freedom score. 
 
-\bigskip
+Now we will test the best model for each method (best-subset, backwards, forwards) against new data (the test set) and see which one performs the best. Whichever model performs the best, we will use it (we will prefer a smaller, simpler model if it does nearly as well).
 
-### 3.1.2 LASSO
+\smallskip
 
-```{r}
+```{r test_set_mlr}
 set.seed(111)
-# perform same thing as Ridge but with alpha==1; get MSE's
-cv.lasso = cv.glmnet(train.model, hfi.combined.train$hf_score, alpha = 1, 
-                     lambda = grid, thresh = 1e-12)
-lasso.model = glmnet(train.model, hfi.combined.train$hf_score, alpha = 1, 
-                     lambda = cv.lasso$lambda.min, thresh = 1e-12)
-bestlam.lasso <- cv.lasso$lambda.min
-bestlam.lasso
-pred.lasso = predict(cv.lasso, newx = test.model, s = cv.lasso$lambda.min)
-mse.lasso = mean((hfi.combined.test$hf_score - pred.lasso)^2)
 
-# this code counts number of parameters that were set to 0
-sum.0s = 0
-for( i in 1:length(lasso.model$beta[,1])){
-  if(lasso.model$beta[i,1]==0 ){
-    sum.0s = sum.0s + 1
+# recreate the best-subset model with the coefs given from Cross-Validation
+# USE THE TRAINING DATA
+best_subset_best_regression = lm(as.formula(paste('hf_score ~', paste(names(coef(best_subset_regression, id = which.min(
+  cv_best_subset_regression_mse )))[2: which.min(cv_best_subset_regression_mse)], 
+  collapse = ' + '))), data=hfi_data_combined_train )
+yhat = predict(best_subset_best_regression, newdata = hfi_data_combined_test)
+final_best_subset_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+
+
+# recreate the forward selection model with the coefs given from Cross-Validation
+# USE THE TRAINING DATA
+best_forward_regression = lm(as.formula(paste('hf_score ~', paste(names(coef(forward_regression, id = which.min(
+  cv_forward_regression_mse)))[2: which.min(cv_forward_regression_mse)], 
+  collapse = ' + '))), data=hfi_data_combined_train )
+yhat = predict(best_forward_regression, newdata = hfi_data_combined_test)
+final_forward_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+
+
+# recreate the best-subset model with the coefs given from Cross-Validation
+# USE THE TRAINING DATA
+best_backward_regression = lm(as.formula(paste('hf_score ~', paste(names(coef(backward_regression, id = which.min(
+  cv_backward_regression_mse)))[2: which.min(cv_backward_regression_mse)], 
+  collapse = ' + '))), data=hfi_data_combined_train )
+yhat = predict(best_backward_regression, newdata = hfi_data_combined_test)
+final_backward_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+
+paste("Mean TSS of Test Set:", round(mean_tss_test, 6))
+paste("MSE of Best-Subset Model with Test Set:", round(final_best_subset_mse, 6))
+paste("MSE of Forward Selection Model with Test Set:", round(final_forward_mse, 6))
+paste("MSE of Backward Deletion Model with Test Set:", round(final_backward_mse, 6))
+
+# I found that the Best-Subset and Forward Selection maybe the same model
+# this does depend on the random seed most likely
+a = sort(names(coef(forward_regression, id = which.min(cv_forward_regression_mse)))[2: which.min(cv_forward_regression_mse)])
+b = sort(names(coef(forward_regression, id = which.min(cv_best_subset_regression_mse)))[2: which.min(cv_best_subset_regression_mse)])
+paste("Are Best-Subset and Forward Selection the Same Models? ....", all(a == b))
+```
+
+We performed cross validation on each model for a given number of predictors with the results found previously for best-subset, backward deletion, and forward selection. The cross-validation helps to add robustness to the estimated MSE, preventing overfitting of the training dataset. It appears that the forward selection and best-subset have the same exact models, hence the identical test MSEs. Ironically, the backward deletion method derives the best model of the three, not best-subset. Granted, the difference is minuscule (like less than 1%). However, we will use the best-subset and forward selection models (as they are the same, assuming the random seed stays the same). This choice is made because the best-subset is exhaustive and the fact that 2 methods returned the same exact linear models gives us more reason to believe this model is better (though both are incredibly accurate and practically identical in R-Squared or correlation).
+
+## 3.3.2 Our Preliminary Analysis So Far
+
+Here are the coefficients of the 3 models (2 are identical).
+
+```{r show_coefs}
+paste("Backwards Deletion Method Coefficients: ")
+paste(names(coef(backward_regression, id=which.min(cv_backward_regression_mse))), collapse = ', ' )
+paste("")
+
+paste("Best-Subset and Forward Selection Methods Coefficients (identical): ")
+paste(names(coef(forward_regression, id = which.min(cv_forward_regression_mse))), collapse = ', ' )
+paste("")
+
+a = sort(names(coef(forward_regression, id = which.min(cv_forward_regression_mse))))
+b = sort(names(coef(backward_regression, id=which.min(cv_backward_regression_mse))))
+
+same_predictors = 0
+diff_predictors = 0
+different_preds = vector()
+for (i in 1:length(a)){
+  if (a[i] %in% b ){
+    same_predictors = same_predictors + 1
+  } else{
+    diff_predictors = diff_predictors + 1
+    different_preds = append(different_preds, a[i])
   }
 }
-sum.0s
-# then print the betas and MSE of best lambda
-lasso.model$beta
-mse.lasso
-fit8=mse.lasso
+
+paste("Number of Same Predictors in 2 Models:", same_predictors )
+paste("Number of Different Predictors in 2 Models:", diff_predictors )
+paste("The different predictors are:", different_preds)
 ```
 
-Using the 10-fold cross validated best lamba of `r bestlam.lasso`, the resulting Lasso is a better model than Ridge because it removes several predictors. The test MSE of `r mse.lasso` is slightly better than Ridge (`r mse.ridge`), and is lower than the test MSE of the full OLS model (`r fit1`).
+The coefficients in the 3 different models are nearly identical, meaning all 3 models are nearly the same (2 actually are). There is only `r diff_predictors` different predictors between the models, which may be due to the different sizes of the models. The forward selection's model has `r which.min(cv_forward_regression_mse)` predictors within the model, while backwards deletion's model has `r which.min(cv_backward_regression_mse)`. Therefore, the near identical models means any of the three can be chosen. We will choose best-subset/forward selection. 
+
+Now, we will analyze the significance of the predictors within the model using T-Tests as MLR gives us the ability to easily infer the importance or significance of a predictor.
+
+```{r significance_forward}
+summary(best_forward_regression)
+```
+
+The predictors that seem most significant (3 asterisks) are:
+
+- pf_ss_homicide: a number based on the number of homicides within the country. More homicides means less human freedom as life is being taken away unqillingly.
+
+- pf_movement_domestic: The freedom of citizens to move around the country at their will. Countries that prevent citizens from easily moving from city to city will tend to have less human freedom. 
+
+- pf_movement_foreign: the same as the above, but for foreigners' movement within the country.
+
+- pf_religion_restrictions: the freedom to practice one's religion. The more lenient countries are with religion, the greater the human freedom tends to be.
+
+- pf_expression_influence, pf_expression_control: the degree that one's expression (like content of meetings or protests and influence over media) is controlled by the country. Country that allows basically any form of expression will tend to have higher human freedom overall.
+
+- pf_identity_sex_male, pf_identity_sex_female: the freedom to identify and have equal legal protections based on sex. The more equal a country treats men and women, the human freedom tends to be greater.
+
+- ef_government_consumption: the amount of money the government spends. The more the government spends, the more free the countries are. This runs counter to the libertarian ideal that CATO follows.
+
+- ef_legal_courts, ef_legal_military, ef_legal_enforcement, ef_legal_gender: the equality within the judicial system for courts (the amount, availability, and impartiality), the fairness towards the military legal issues, the fairness that laws are enforced, and equality of laws between genders. The more fair and equal and just the judicial system is, the greater the human freedom tends to be.
+
+- ef_money_growth, ef_money_sd, ef_money_inflation, ef_money_currency: The degree the monetary system follows libertarian ideals. AKA, no manipulation of currency or of the money supply for artificial money generation. These variables are quite murky, so beware. I am not sure how they calculate this and how accurate their data is. Additionally, the USA has artificially created *a lot* of money and therefore they should have poor scores, but the USA does not. However, China does as they publicly (kinda) manipulate currency. Basically, I would take these predictors with a ground of salt. The less the government messes with the money supply, interest rates, and monetary policy, the greater the human freedom tends to be.
+
+- ef_trade_tariffs_mean, ef_trade_regulatory: the mean of the trade tariffs and regulation on trade (often affecting trade out-of-country). The greater the tariffs, the less economic freedom according to libertarian views. If the tariffs are small, the human freedom tends to be greater.
+
+- ef_trade_movement_capital, ef_trade_movement_visit: how easily capital can be moved around the country for citizens and visitors (foreigners). The easier money/capital can be moved, then the human freedom tends to be greater.
+
+- ef_regulation_credit, ef_regulation_labor_hours: how well regulated the credit sector is and how much time is spent on enforcing regulation. The CATO institute believes that the credit industry needs to have some oversight to prevent bad actors from taking advantage from no regulation. However, they also will there was very little time spend on enforcing regulation. Therefore, this combo of predictors is again wierd. It is hard to draw many conclusions from it.
+
+The predictors we are most interested in are: pf_ss_homicide, pf_movement_domestic, pf_movement_foreign, pf_religion_restrictions, pf_expression_influence, pf_expression_control, ef_legal_courts, ef_legal_military, ef_legal_enforcement, ef_legal_gender, ef_money_inflation (how well they manage inflation), ef_trade_regulatory, and ef_trade_movement_visit for a total of 12 predictors. The resulting MLR model is:
+
+```{r simple_lm}
+set.seed(111)
+simple_mlr_model = lm(hf_score ~ pf_ss_homicide + pf_movement_domestic + pf_movement_foreign + pf_religion_restrictions + pf_expression_influence + 
+                        pf_expression_control + ef_legal_courts + ef_legal_military + ef_legal_enforcement + ef_legal_gender + ef_money_inflation +
+                        ef_trade_regulatory + ef_trade_movement_visit, data = hfi_data_combined_train)
+yhat = predict(simple_mlr_model, newdata = hfi_data_combined_test)
+simple_mlr_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+paste("The Mean TSS of the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE of the Simple MLR Model:", round(simple_mlr_test_mse, 6))
+paste("The R-Squared of the Simple MLR Model:", round(1 - simple_mlr_test_mse / mean_tss_test, 6))
+```
+
+The resulting Test MSE is `r round(simple_mlr_test_mse, 6)` which is worse than the 30+ predictor models above, but still explains roughly `r round((100*(1 - simple_mlr_test_mse / mean_tss_test)), 2)`% of the variance within the dataset. The results are preliminary, but they do seem to indicate the human freedom index could be estimated with substantially fewer predictors than the 39 in the entire dataset. We wil return to this at the end of the analysis.
+
 
 \bigskip
 
-## 3.2 Dimension Reduction Methods
-### 3.2.1 Principle Components Regression (PCR)
+## 3.4 Dimension Reduction Methods:
 
-```{r}
-set.seed(111)
-# create model, then print validation plot and mse of best model
-pcr.model = pcr(hf_score ~ . , data = hfi.combined.train, scale = TRUE, 
+We performed additional methods to try and reduce the number of predictors within the linear models. The techniques utilized were Ridge, Lasso, principle component analysis (PCA), and partial least squares (PLS). Due to the high accuracy of the previous models, we will only briefly analyze these findings. We strongly believe the model should not become overly complex as we will lose some inferencing ability with some of the following techniques (PCA, PLS).
+
+### 3.4.1 Ridge
+
+```{r ridge_reg}
+# simply used to get same results regardless of run. Methods should be robust to the seed changing, though
+set.seed(111) 
+
+#  RIDGE REGRESSION METHOD
+# grid holds the range of LAMBDA values we use
+
+grid = 10^seq(10,-2, length = 1000)
+regression_model_train = model.matrix(hf_score ~ ., data = hfi_data_combined_train)[,-1]
+regression_model_test = model.matrix(hf_score ~ ., data = hfi_data_combined_test)[,-1]
+
+# Perform Cross-Validation and test on the test set to get MSE's
+# Get the best lambda from CV
+cv_ridge_regression = cv.glmnet(regression_model_train, hfi_data_combined_train$hf_score, 
+                                alpha = 0, lambda = grid, thresh = 1e-12)
+# Get the single, best model with CV best lambda
+best_ridge_model = glmnet(regression_model_train, hfi_data_combined_train$hf_score,
+                          alpha = 0, lambda = cv_ridge_regression$lambda.min, thresh = 1e-12)
+# Store the best Lambda, and get MSE by predicting with test set
+best_lambda_ridge <- cv_ridge_regression$lambda.min
+ridge_model_predictions = predict(best_ridge_model, 
+                                  newx = regression_model_test, 
+                                  s = cv_ridge_regression$lambda.min)
+best_ridge_model_mse = mean((hfi_data_combined_test$hf_score - ridge_model_predictions)^2)
+
+best_lambda_ridge
+best_ridge_model$beta
+mean_tss_test
+best_ridge_model_mse
+
+```
+
+Using the 10-fold cross validated best lamdba of about `r round(best_lambda_ridge, 6)`, in the Ridge model all 39 variables remain in the model.The test MSE rises to `r round(best_ridge_model_mse, 6)`. The result delivers a model with no predictor removed no improvement to the test MSE of the MLR (the test MSE was `r round(final_forward_mse, 6)`). The Ridge model fails to simplify the existing model. 
+
+
+\bigskip
+
+### 3.4.2 Lasso
+
+```{r lasso_reg}
+set.seed(111) 
+
+# LASSO REGRESSION
+# perform same thing as RIDGE but with alpha==1; get MSE's
+cv_lasso_regression = cv.glmnet(regression_model_train, hfi_data_combined_train$hf_score, 
+                                alpha = 1, lambda = grid, thresh = 1e-12)
+best_lasso_regression = glmnet(regression_model_train, hfi_data_combined_train$hf_score, 
+                               alpha = 1, lambda = cv_lasso_regression$lambda.min, thresh = 1e-12)
+best_lambda_lasso <- cv_lasso_regression$lambda.min
+lasso_model_predictions = predict(best_lasso_regression, 
+                                  newx = regression_model_test, 
+                                  s = cv_lasso_regression$lambda.min)
+best_lasso_model_mse = mean((hfi_data_combined_test$hf_score - lasso_model_predictions)^2)
+
+# this code counts number of parameters that were set to 0
+# This is the difference between RIDGE and LASSO 
+#     RIDGE: lowers the Betas to reduce degree of Beta terms
+#     LASSO: lowers the Betas to 0 to remove completely from model
+sum_betas_0s = 0
+for( i in 1:length(best_lasso_regression$beta[,1])){
+  if(best_lasso_regression$beta[i,1]==0 ){
+    sum_betas_0s = sum_betas_0s + 1
+  }
+}
+
+sum_betas_0s
+best_lambda_lasso
+mean_tss_test
+best_lasso_model_mse
+```
+
+Using the 10-fold cross validated best lambda of `r best_lambda_lasso`, the resulting Lasso is a better model than Ridge because it removes several predictors. This Lasso model removes `r sum_betas_0s` predictors, which is somewhat underwhelming considering we have 39 predictors. The test MSE of `r round(best_lasso_model_mse, 6)` is slightly worse than Ridge (`r round(best_ridge_model_mse, 6)`). Therefore, both the Ridge and Lasso models do not help us significantly as both models are still more complex than the forward selection model, backward deletion model, and best-subset model, yet fail to deliver better results.
+
+\bigskip
+
+### 3.4.3 PCR: Principle Component Reduction
+
+```{r pcr_analysis}
+set.seed(111) 
+
+### DIMENSION REDUCTION METHODS ###
+# Principle Component Reduction (PCR)
+pcr_model = pcr(as.formula(paste("hf_score ~", paste(names(coef(forward_regression, id = which.min(cv_forward_regression_mse)))[2:which.min(cv_forward_regression_mse)], 
+                                 collapse = " + "))), data = hfi_data_combined_train, scale = TRUE, validation = "CV")
+plot(x=0:pcr_model$ncomp, 
+     y=c(pcr_model$validation$PRESS0, pcr_model$validation$PRESS )/pcr_model$validation$PRESS0,
+     main = "Validation Plot for Principle Component Reduction (PCR) Analysis",
+     ylab = "MSE", xlab = "Number of Components Used") +
+  lines(x=0:pcr_model$ncomp, 
+       y=c(pcr_model$validation$PRESS0, pcr_model$validation$PRESS )/pcr_model$validation$PRESS0) +
+  points(x = which.min(pcr_model$validation$PRESS), 
+         y = min(pcr_model$validation$PRESS)/pcr_model$validation$PRESS0,
+         col ="red", cex=2, pch =19) +
+  text(x = which.min(pcr_model$validation$PRESS), 
+       y = min(pcr_model$validation$PRESS)/pcr_model$validation$PRESS0,
+       labels=round(min(pcr_model$validation$PRESS)/pcr_model$validation$PRESS0, 4), pos = 3) +
+  points(x = 1, y = pcr_model$validation$PRESS[1]/pcr_model$validation$PRESS0,
+         col ="red", cex=2, pch =19) +
+  text(x = 1, y = pcr_model$validation$PRESS[1]/pcr_model$validation$PRESS0,
+       labels = round(pcr_model$validation$PRESS[1]/pcr_model$validation$PRESS0, 4), pos = 1) + 
+  text(x=20, y=1, labels = paste("Mean TSS of Data =", round(mean_tss_train,4)))
+
+yhat = predict(pcr_model, newdata = hfi_data_combined_test, ncomp = which.min(pcr_model$validation$PRESS))
+best_pcr_model_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+yhat = predict(pcr_model, newdata = hfi_data_combined_test, ncomp = 1)
+pcr_model_1_comp_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+yhat = predict(pcr_model, newdata = hfi_data_combined_test, ncomp = 9)
+pcr_model_9_comp_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+yhat = predict(pcr_model, newdata = hfi_data_combined_test, ncomp = 10)
+pcr_model_10_comp_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE for the Forward Selection Model:", round(final_forward_mse, 6))
+paste("The Test MSE for the Best PCR Model with",which.min(pcr_model$validation$PRESS), "Components:", round(best_pcr_model_test_mse, 6))
+paste("The Test MSE for the Best PCR Model with 1 Component:", round(pcr_model_1_comp_test_mse, 6))
+paste("The Test MSE for the Best PCR Model with 11 Components:", round(pcr_model_9_comp_test_mse, 6))
+paste("The Test MSE for the Best PCR Model with 10 Components:", round(pcr_model_10_comp_test_mse, 6))
+
+```
+
+Using 10-fold cross validation, the lowest average root MSE is the one corresponding to M=`r which.min(pcr_model$validation$PRESS)` components. The resulting PCR gives a test MSE of `r round(best_pcr_model_test_mse, 6)`, and is slightly worse than the linear models shown earlier. Notably, the validation plot shows that after the first component is added, only marginal benefits are gained from adding more components. After running the PCR with 1 component results in a test MSE of `r round(pcr_model_1_comp_test_mse, 6)`. The test MSE is still very accurate, but not improved compared to the forward selection MLR test MSE of `r round(final_forward_mse, 6)`. 
+
+A large issue with PCR, is the predictors are transformed into a combination of each other to reduce the dimensionality. However, this does not mean the model is simpler. It just means there is 1 predictor for a pair of predictors. Additionally, the transformation of the predictors distort our understanding of the significance and importance of specific predictors on human freedom. Therefore, we prefer the forward selection and best-subset models from the MLR section above. More accuracy and more inferencing. Literally, the MLR is strictly better.
+
+
+\bigskip
+
+### 3.4.4 PLS
+
+```{r pls_analysis}
+set.seed(111) 
+
+# Partial Least Squares (PLS) Model
+pls_model = plsr(as.formula(paste("hf_score ~", paste(names(coef(forward_regression, id = which.min(cv_forward_regression_mse)))[2:which.min(cv_forward_regression_mse)], 
+                                 collapse = " + "))),  data = hfi_data_combined_train, scale = TRUE, 
                 validation = "CV")
-validationplot(pcr.model, val.type = "MSEP")
+plot(x=0:pls_model$ncomp, 
+     y=c(pls_model$validation$PRESS0, pls_model$validation$PRESS )/pls_model$validation$PRESS0,
+     main = "Validation Plot for Partial Least Squares (PLS)",
+     ylab = "MSE", xlab = "Number of Components Used") +
+  lines(x=0:pls_model$ncomp, 
+        y=c(pls_model$validation$PRESS0, pls_model$validation$PRESS )/pls_model$validation$PRESS0) +
+  points(x = which.min(pls_model$validation$PRESS), 
+         y = min(pls_model$validation$PRESS)/pls_model$validation$PRESS0,
+         col ="red", cex=2, pch =19) +
+  text(x = which.min(pls_model$validation$PRESS), 
+       y = min(pls_model$validation$PRESS)/pls_model$validation$PRESS0,
+       labels=round(min(pls_model$validation$PRESS)/pls_model$validation$PRESS0, 4), pos = 3) +
+  points(x = 1, y = pls_model$validation$PRESS[1]/pls_model$validation$PRESS0,
+         col ="red", cex=2, pch =19) +
+  text(x = 1, y = pls_model$validation$PRESS[1]/pls_model$validation$PRESS0,
+       labels = round(pls_model$validation$PRESS[1]/pls_model$validation$PRESS0, 4), pos = 1) + 
+  text(x=20, y=1, labels = paste("Mean TSS of Data =", round(mean_tss_train,4)))
 
-summary(pcr.model)
+yhat = predict(pls_model, newdata = hfi_data_combined_test, ncomp = which.min(pls_model$validation$PRESS))
+best_pls_model_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
 
-pcr.preds = predict(pcr.model, newdata = hfi.combined.test, ncomp = 37)
-pcr.mse = mean((pcr.preds - hfi.combined.test$hf_score)^2)
-pcr.mse
-fit9=pcr.mse
+yhat = predict(pls_model, newdata = hfi_data_combined_test, ncomp = 1)
+pls_model_1_comp_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+yhat = predict(pls_model, newdata = hfi_data_combined_test, ncomp = 2)
+pls_model_2_comp_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE for the Forward Selection Model:", round(final_forward_mse, 6))
+paste("The Test MSE for the Best PLS Model with",which.min(pls_model$validation$PRESS), "Components:", round(best_pls_model_test_mse, 6))
+paste("The Test MSE for the Best PLS Model with 1 Component:", round(pls_model_1_comp_test_mse, 6))
+paste("The Test MSE for the Best PLS Model with 2 Components:", round(pls_model_2_comp_test_mse, 6))
 ```
 
-Using 10-fold cross validation, the lowest average root MSE is the one corresponding to M=37 components.The resulting PCR gives a test MSE of `r pcr.mse`, and is slightly higher than the test MSE of the full OLS model (`r fit1`). Notably, the validation plot shows that after the first component is added, only marginal benefits are gained from adding more components.
+The PLS method delivers very accurate MSE after the first component, then only marginal benefits afterwards. It seems after the ninth component, the models no longer improve the test MSE results. Again, the transformations of the predictors to form these components leads to less inferencing power (especially compared to the equally if not superior linear models). Therefore, we decide that the linear models are still the best models. The results are practically identical to the PCR, not useful enough to use nor better than the existing MLR models from previous sections. 
 
 \bigskip
 
-### 3.2.2 Partial Least Squares (PLS)
+### 3.4.5 Dimension Reduction Findings
 
-```{r}
-set.seed(111)
-# create pls model and plot validation; report the best mse
-pls.model = plsr(hf_score ~ . , data = hfi.combined.train, scale = TRUE, 
-                 validation = "CV")
-validationplot(pls.model, val.type = "MSEP")
-summary(pls.model)
+These methods failed to simplify the model in a meaningful way. Again, it is important to highlight that the accuracy of the MLR models from forward, backward, best-subset, and cross-validated were all highly accurate. These models explained over 90% (and often 95%) of variance, therefore the reduction is not really necessary as the model benefits from having all the variables included. If the MLR was not as effective as a predictor and inferencing tool, we would look into a more stringent analysis using these dimension reduction techniques. 
 
+While some methods deliver results on par with linear models, the linear models are superior for inferencing. We are very interested in the inferencing capabilities of the linear models to draw conclusions about which predictors are the most significant and affect human freedom score the most.
 
-pls.preds = predict(pls.model, newdata = hfi.combined.test, ncomp = 9)
-pls.mse = mean((pls.preds - hfi.combined.test$hf_score)^2)
-pls.mse
-fit10=pls.mse
-```
+### We create a smaller MLR model at the **end** of the project using hand-picked predictors based on all the methods for inferencing.
 
-Using 10-fold cross validation, the lowest average root MSE is the one corresponding to M=9. The resulting PCR, the resulting test MSE is `r pls.mse`, and is slightly higher than the test MSE of the full OLS model (`r fit1`). The validation and the variance explained seem to go completely constant after 9 components. Again, the validation plot shows that after the first component is added, only marginal benefits are gained from adding more components.
+We have already done this partially already, but there maybe changes to the variables chosen by the end of the analysis.
 
-```{r}
-rm(cv.lasso, cv.ridge, lasso.model, pcr.model, pls.model, pred.lasso, pred.ridge, ridge.model, test.model, train.model, bestlam.lasso, bestlam.ridge, grid, i, mse.lasso, mse.ridge, pcr.mse, pcr.preds, pls.mse, pls.preds, sum.0s)
-```
 
 \bigskip
+\newpage
+
 
 
 # 4. Non-Linear Methods
 
+We have focused on linear methods of analyzing trends in data. Now we will pivot to some non-linear methods like polynomial regression, splines, Generalized Additive Models (GAMs), and K-Nearest Neighbors (KNN). 
+
 ## 4.1 Polynomial Regression
 
-So far, we have obtained the test and CV errors in the table below. In this section we will add 10-fold CV errors for: 1) the best polynomial regression that we can identify, 2) a natural cubic spline for the most significant predictor, 3) a natural spline GAM, and 2) a smoothing spline GAM.
+This regression using polynomial terms is not necessary. We do not really expect polynomial trends within the data and these polynomial curves tend to add variance and less interpretability to the end results. However,  we still try the polynomial curves to see if they do offer insights to the data. 
 
-```{r}
-x=matrix(data=
-           c("Full OLS, 39 Predictors (test/train)",
-"Full OLS, 39 Predictors (10-fold CV)",
-"Forward Select, 26 Predictors (test/train)",
-"Forward Select, 35 Predictors (10-fold CV)",
-"Best Subset, 26 Predictors (test/train)",
-"Best Subset, 30 Predictors (10-fold CV)",
-"Ridge, 39 Predictors (test/train)",
-"Lasso, 34 Predictors (test/train)",
-"PCR, 37 Components, (test/train)",
-"PLS, 9 Components, (test/train)",
-fit1,
-fit2,
-fit3,
-fit4,
-fit5,
-fit6,
-fit7,
-fit8,
-fit9,
-fit10), nrow=10, ncol=2) 
-colnames(x) <- c("Method","test MSE")
-rownames(x) <- c("1","2", "3", "4", "5", "6", "7", "8", "9", "10")
-x
+Initially, we need to analyze the pair-plots that showcase the correlation between variables. The focus is hf_score with the most significant variables found from the best-subset regression of size 10 predictors. This model was chosen as these will probably be the most significant variables we know so far. This isolates which predictors we should analyze for non-linear trends to the primary ones.
+
+The Pair-Plots:
+
+```{r pair_plots}
+pairs(hfi_data_combined_train$hf_score ~ hfi_data_combined_train$pf_ss_homicide + hfi_data_combined_train$pf_movement_domestic +
+        hfi_data_combined_train$pf_expression_control + hfi_data_combined_train$pf_identity_sex_male + hfi_data_combined_train$ef_legal_courts)
+
+pairs(hfi_data_combined_train$hf_score ~ hfi_data_combined_train$ef_legal_gender + hfi_data_combined_train$ef_money_sd + 
+        hfi_data_combined_train$ef_money_currency + hfi_data_combined_train$ef_trade_regulatory + hfi_data_combined_train$ef_regulation_credit)
+
+pairs(hfi_data_combined$hf_score ~ hfi_data_combined$ef_trade_regulatory + hfi_data_combined$pf_ss_homicide, 
+      main="The Homicide and Trade Regulation Pairs with HF_Score")
 ```
 
-As we saw above, the best subset selection model gave us the smallest CV error using 30 predictors. But we also saw that after the inclusion of 10 predictors, the marginal benefit of including more is very small. Therefore, we use the predictors in the best subset selected model (using RSS to define the best model of each size) of size 10:
+Overall, the pair plots do not indicate a large amount of polynomial trends, but more that certain values are more common (often skewed or multi-modal). We isolated that the clearest non-linear relationships with hf_score: pf_ss_homicide and ef_trade_regulatory. 
 
-```{r}
-coef(best.subsets.reg, 10)
-```
+Let's first test this with polynomial regression:
 
-```{r}
-pairs(~hfi.combined$hf_score+hfi.combined$pf_ss_homicide+hfi.combined$pf_movement_domestic+hfi.combined$pf_expression_control+hfi.combined$pf_identity_sex_male+hfi.combined$ef_legal_courts)
-```
-```{r}
-pairs(~hfi.combined$hf_score+hfi.combined$ef_legal_gender+hfi.combined$ef_money_sd+hfi.combined$ef_money_currency+hfi.combined$ef_trade_regulatory+hfi.combined$ef_regulation_credit)
-```
-
-```{r}
-pairs(~hfi.combined$hf_score+hfi.combined$pf_ss_homicide+hfi.combined$ef_trade_regulatory)
-```
-
-The above pairs pot suggest the following predictors might have the clearest non-linear relationships with hf_score: pf_ss_homicide and ef_trade_regulatory. Let's test this with polynomial regression:
-
-```{r}
+```{r polynomial_regression}
 set.seed(111)
-CVerror = rep(0, 10)
-for (i in 1:5) {
-    fit = glm(hf_score~ poly(pf_ss_homicide, i), data = hfi.combined)
-    CVerror[i] = cv.glm(hfi.combined, fit, K = 10)$delta[1]
+max_poly_term = 5
+par(mfrow=c(1,1))
+
+CVerror_homocide = rep(0, max_poly_term)
+for (i in 1:max_poly_term) {
+    fit = glm(hf_score ~ poly(pf_ss_homicide, i) + . - pf_ss_homicide, data = hfi_data_combined_train)
+    CVerror_homocide[i] = cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
 }
-plot(CVerror, xlab = "Degree", ylab = "CV Error", type = "l")
-points(which.min(CVerror), CVerror[which.min(CVerror)], col = "red",cex=2,pch =20)
-```
+plot(CVerror_homocide, main = "Cross-Validated Polynomial Regression for Homicide",
+     xlab = "Polynomial Degree", ylab = "CV Error", type = "l")
+points(which.min(CVerror_homocide), CVerror_homocide[which.min(CVerror_homocide)], col = "red",cex=2,pch =20)
 
-```{r}
-set.seed(111)
-CVerror = rep(0, 10)
-for (i in 1:5) {
-    fit = glm(hf_score~ poly(ef_trade_regulatory, i), data = hfi.combined)
-    CVerror[i] = cv.glm(hfi.combined, fit, K = 10)$delta[1]
+CVerror_trade_reg = rep(0, max_poly_term)
+for (i in 1:max_poly_term) {
+    fit = glm(hf_score~ poly(ef_trade_regulatory, i) + . - ef_trade_regulatory, data = hfi_data_combined_train)
+    CVerror_trade_reg[i] = cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
 }
-plot(CVerror, xlab = "Degree", ylab = "CV Error", type = "l")
-points(which.min(CVerror), CVerror[which.min(CVerror)], col = "red",cex=2,pch =20)
+plot(CVerror_trade_reg, main = "Cross-Validated Polynomial Regression for Trade Regulation", 
+     xlab = "Polynomial Degree", ylab = "CV Error", type = "l")
+points(which.min(CVerror_trade_reg), CVerror_trade_reg[which.min(CVerror_trade_reg)], col = "red",cex=2,pch =20)
+
+CVerror_combined = matrix(data=rep(rep(0, max_poly_term), max_poly_term), nrow=max_poly_term, ncol = max_poly_term)
+for (i in 1:max_poly_term) {
+  for (j in 1:max_poly_term){
+    fit = glm(hf_score~ poly(pf_ss_homicide, i) + poly(ef_trade_regulatory, j) + . -
+                ef_trade_regulatory - pf_ss_homicide, data = hfi_data_combined_train)
+    CVerror_combined[i, j] = cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
+  }
+  plot(CVerror_combined[i,1:max_poly_term], 
+       main = paste("For", i, "Polynomial Degree for Homicide"), 
+       xlab = "Polynomial Degree for Trade Regulation", ylab = "CV Error", type = "l")
+}
+
+
+polyfit_homicide = lm(hf_score ~ poly(pf_ss_homicide, which.min(CVerror_homocide)) + . - 
+                        pf_ss_homicide, data = hfi_data_combined_train)
+polyfit_trade_reg = lm(hf_score ~ poly(ef_trade_regulatory, which.min(CVerror_trade_reg)) + . - 
+                         ef_trade_regulatory, data = hfi_data_combined_train)
+
+polyfit_combined = lm(hf_score ~ poly(ef_trade_regulatory, 
+                                      arrayInd(which.min(CVerror_combined),
+                                               dim(CVerror_combined))[1,2]) +
+                        poly(pf_ss_homicide, arrayInd(which.min(CVerror_combined), 
+                                                      dim(CVerror_combined))[1,1]) + 
+                        . - ef_trade_regulatory - pf_ss_homicide, data = hfi_data_combined_train)
+
+summary(polyfit_homicide)
+yhat = predict(polyfit_homicide, newdata = hfi_data_combined_test)
+polyfit_homicide_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+summary(polyfit_trade_reg)
+yhat = predict(polyfit_trade_reg, newdata = hfi_data_combined_test)
+polyfit_trade_reg_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+summary(polyfit_combined)
+yhat = predict(polyfit_combined, newdata = hfi_data_combined_test)
+polyfit_combined_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+paste("Minimum Cross-Validate MSE of Combined Polynomial Terms is:", 
+      (CVerror_combined[arrayInd(which.min(CVerror_combined), dim(CVerror_combined))]))
+paste("With the Homicide Polynomial Term at", 
+        arrayInd(which.min(CVerror_combined), dim(CVerror_combined))[1,1])  
+paste("With the Trade Regulation Polynomial Term at", 
+        arrayInd(which.min(CVerror_combined), dim(CVerror_combined))[1,2])
+
+paste("MLR Forward Regression with No Polynomial Terms Test MSE: ", round(final_forward_mse, 6))
+paste("MLR with Polynomial Term Homicide Test MSE: ", round(polyfit_homicide_mse, 6))
+paste("MLR with Polynomial Term Trade Regulation Test MSE:", round(polyfit_trade_reg_mse, 6))
+paste("MLR with Polynomial Term Trade Regulation + Homicide Test MSE:", round(polyfit_combined_mse, 6))
+
 ```
 
-```{r}
-polyfit=lm(hf_score~ pf_ss_homicide,data=hfi.combined)
-polyfit2=lm(hf_score~poly(pf_ss_homicide ,2),data=hfi.combined)
-polyfit3=lm(hf_score~poly(pf_ss_homicide ,3),data=hfi.combined)
-polyfit4=lm(hf_score~poly(pf_ss_homicide ,4),data=hfi.combined)
-polyfit5=lm(hf_score~poly(pf_ss_homicide ,5),data=hfi.combined)
-polyfit6=lm(hf_score~poly(pf_ss_homicide ,6),data=hfi.combined)
-anova(polyfit, polyfit2, polyfit3, polyfit4, polyfit5, polyfit6)
-```
+After performing the polynomial regression, the results seem to indicate that the test MSE of the cross-validate polynomial models is improved slightly. The combined model and the trade regulation polynomial models are identical as the combined model sets the homicide polynomial to degree 1 (which is identical to a normal, non-polynomial model). The Test MSE of the combined polynomial model (and trade regulation model as they are identical) is `r round(polyfit_combined_mse, 6)` compared to the forward selection or best-subset model's Test MSE of `r round(final_forward_mse, 6)`. There is a slight improvement of roughly 5% in the MSE, however, relative to the Mean TSS, the change is marginal at best. The combined polynomial regression explains less than 1% more variance than the forward selection MLR with no polynomial terms.  
 
-```{r}
-polyfit=lm(hf_score~ ef_trade_regulatory,data=hfi.combined)
-polyfit2=lm(hf_score~poly(ef_trade_regulatory ,2),data=hfi.combined)
-polyfit3=lm(hf_score~poly(ef_trade_regulatory ,3),data=hfi.combined)
-polyfit4=lm(hf_score~poly(ef_trade_regulatory ,4),data=hfi.combined)
-polyfit5=lm(hf_score~poly(ef_trade_regulatory ,5),data=hfi.combined)
-polyfit6=lm(hf_score~poly(ef_trade_regulatory ,6),data=hfi.combined)
-anova(polyfit, polyfit2, polyfit3, polyfit4, polyfit5,polyfit6)
-```
+Therefore, we will not use polynomial regression as it adds unnecessary complexity and the relation does not seem obviously quartic (refer back to the pair-plots above). Since there is no obvious reason that a 4th power term would help other than to increase the variance within the model, we strongly believe leaving trade regulation as a linear term (1-power).
 
-The 10-fold CV above suggests that the test error is lowest with both pf_ss_homicide and ef_trade_regulatory as six degree polynomials, but ANOVA suggests that a fifth degree polynomial is sufficient for pf_ss_homicide.
-
-Using a fifth degree polynomial for pf_ss_homicide and a sixth degree polynomial for ef_trade_regulatory of these two variables and including the other eight predictors:
-
-```{r}
-set.seed(111)
-    fit = glm(hf_score~ pf_movement_domestic+
-                pf_expression_control+
-                pf_identity_sex_male+
-                ef_legal_courts+
-                ef_legal_gender+
-                ef_money_sd+
-                ef_money_currency+
-                poly(pf_ss_homicide, 5)+
-                ef_regulation_credit+
-                poly(ef_trade_regulatory, 6), data = hfi.combined)
-    CVerror.poly= cv.glm(hfi.combined, fit, K = 10)$delta[1]
-    CVerror.poly
-    fit11=CVerror.poly
-```
+\bigskip
 
 ## 4.2 Splines
 
-Here I will conduct a natural spline using ef_trade_regulatory, which had the clearest non-linear relationship with hf_score seen when running the polynomial regressions above.
+Here we will perform the natural spline using ef_trade_regulatory (trade regulation), which had the most non-linear relationship with Human Freedom. The goal is to see if a spline for the predictor trade regulation will have a positive effect on model accuracy. The worry here is that the spline will significantly increase the deviation of the model near the splitting points. 
 
-```{r}
+
+```{r splines}
 set.seed(111)
-CVerrorSpline = rep(0, 10)
-for (i in 1:10) {
-  fit=glm(hf_score~ns(ef_trade_regulatory, df=i),data=hfi.combined)
-  CVerrorSpline[i] <- cv.glm(hfi.combined, fit, K = 10)$delta[1]
+max_spline_term = 10
+CVerrorSpline_trade_reg = rep(0, max_spline_term)
+for (i in 1:max_spline_term) {
+  fit = glm(hf_score ~ ns(ef_trade_regulatory, df=i) + . - ef_trade_regulatory, data = hfi_data_combined_train)
+  CVerrorSpline_trade_reg[i] <- cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
 }
-plot(CVerrorSpline, xlab = "Degrees of Freedom", ylab = "CV Error", type = "b")
-points(which.min(CVerrorSpline), CVerrorSpline[which.min(CVerrorSpline)], col = "red",cex=2,pch =20)
-```
-
-Here we see that a natural spline with 8 degrees of freedom minimizes the 10-fold KV error. This corresponds to a cubic spline with seven interior knots.
-
-```{r}
-ef_trade_regulatorylims =range(hfi.combined$ef_trade_regulatory)
-ef_trade_regulatory.grid=seq(from=ef_trade_regulatorylims [1],to=ef_trade_regulatorylims [2])
-plot(hfi.combined$ef_trade_regulatory ,hfi.combined$hf_score ,xlim=ef_trade_regulatorylims ,cex =.5,col=" darkgrey ")
- fit=glm(hf_score ~ns(ef_trade_regulatory, df=8),data=hfi.combined)
- pred2=predict (fit, newdata=list(ef_trade_regulatory=ef_trade_regulatory.grid),se=T)
- se.bands=cbind(pred2$fit +2* pred2$se.fit ,pred2$fit -2* pred2$se.fit)
- lines(ef_trade_regulatory.grid , pred2$fit ,col="red",lwd=2)
- matlines (ef_trade_regulatory.grid ,se.bands ,lwd=1, col=" blue",lty=3)
-```
-
-```{r}
-CVerrorSpline[8]
-fit12=CVerrorSpline[8]
-```
+plot(CVerrorSpline_trade_reg, main="The CV MSE for the Trade Regulation Splines of Various Degrees", 
+     xlab = "Degrees of Freedom", ylab = "CV Error", type = "b")
+points(which.min(CVerrorSpline_trade_reg), CVerrorSpline_trade_reg[which.min(CVerrorSpline_trade_reg)], col = "red",cex=2,pch =20)
 
 
-```{r}
-set.seed(111)
-CVerrorSpline = rep(0, 10)
-for (i in 1:10) {
-  fit=glm(hf_score~ns(pf_ss_homicide, df=i),data=hfi.combined)
-  CVerrorSpline[i] <- cv.glm(hfi.combined, fit, K = 10)$delta[1]
+CVerrorSpline_homicide = rep(0, max_spline_term)
+for (i in 1:max_spline_term) {
+  fit = glm(hf_score ~ ns(pf_ss_homicide, df=i) + . - pf_ss_homicide, data = hfi_data_combined_train)
+  CVerrorSpline_homicide[i] <- cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
 }
-plot(CVerrorSpline, xlab = "Degrees of Freedom", ylab = "CV Error", type = "b")
-points(which.min(CVerrorSpline), CVerrorSpline[which.min(CVerrorSpline)], col = "red",cex=2,pch =20)
+plot(CVerrorSpline_homicide, main="The CV MSE for the Homicide Splines of Various Degrees",
+     xlab = "Degrees of Freedom", ylab = "CV Error", type = "b")
+points(which.min(CVerrorSpline_homicide), CVerrorSpline_homicide[which.min(CVerrorSpline_homicide)], col = "red",cex=2,pch =20)
+
+
+trade_reg_spline_model = glm(hf_score ~ ns(ef_trade_regulatory, df=which.min(CVerrorSpline_trade_reg)) + . - ef_trade_regulatory, 
+                             data = hfi_data_combined_train)
+yhat = predict(trade_reg_spline_model, newdata = hfi_data_combined_test)
+trade_reg_spline_model_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+homicide_spline_model = glm(hf_score ~ ns(ef_trade_regulatory, df=which.min(CVerrorSpline_homicide)) + . - ef_trade_regulatory, 
+                        data = hfi_data_combined_train)
+yhat = predict(homicide_spline_model, newdata = hfi_data_combined_test)
+homicide_spline_model_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+
+paste("The Mean TSS of the Test Set: ", round(mean_tss_test, 6))
+paste("MLR Forward Regression with No Polynomial Terms Test MSE: ", round(final_forward_mse, 6))
+paste("MLR with Spline of Term Trade Regulation Test MSE: ", round(trade_reg_spline_model_mse, 6))
+paste("MLR with Spline of Term Homicide Test MSE: ", round(homicide_spline_model_mse, 6))
 ```
 
-Here we see that 6 degrees of freedom minimizes the 10-fold KV error for a spline of hf_score on pf_ss_homicide. We will use 6 degrees of freedom for this variable in our GAM.
+The splines with 9 degrees of freedom for trade regulation predictor seems to result in a very accurate model. The test MSE is `r round(trade_reg_spline_model_mse, 6)` compared to the overall TSS for the test dataset: `r round(mean_tss_test, 6)`. Additionally, we tested the the spline functions on homicide and resulted in a more accurate model than the trade regulation model (possibly the trade regulation spline model is overfitting). The resulting test MSE is `r round(homicide_spline_model_mse, 6)` versus the TSS of `r round(mean_tss_test, 6)`. Overall, this indicates a non-linear relationship similar to the finding with polynomial regression. However, there is added complexity due to the added splines, and with only a small change in explanation of variance in the data (<1% change). Therefore, we prefer the best-subset model over the polynomial and spline models.
 
-## 4.3 GAMS
 
-Here we will try a natural cubic spline GAM using ef_trade_regulatory and pf_ss_homicide with the best degrees of freedom uncovered above in the splines section, as well as the other eight predictors to predict hf_score: 
+\bigskip
 
-```{r}
+
+## 4.3 Generalized Additive Models (GAMs)
+
+We are going to combine the two splines above with a GAM (Generalized Additive Model) to see if improvements can be made. 
+
+```{r gams}
 set.seed(111)
-gam1=glm(hf_score ~ pf_movement_domestic+
-                pf_expression_control+
-                pf_identity_sex_male+
-                ef_legal_courts+
-                ef_legal_gender+
-                ef_money_sd+
-                ef_money_currency+
-                ef_regulation_credit+
-               ns(ef_trade_regulatory ,8)+
-               ns(pf_ss_homicide,6),data=hfi.combined)
-  CVerrorGAM <- cv.glm(hfi.combined, gam1, K = 10)$delta[1]
-  CVerrorGAM
-  fit13=CVerrorGAM
+
+CVerrorGam = matrix(data=rep(rep(0, max_spline_term), max_spline_term), nrow=max_spline_term, 
+                          ncol = max_spline_term)
+for (i in 1:max_spline_term) {
+  for (j in 1:max_spline_term){
+    fit = gam(hf_score ~ ns(pf_ss_homicide, i) + ns(ef_trade_regulatory, j) + . -
+                ef_trade_regulatory - pf_ss_homicide, data = hfi_data_combined_train)
+    CVerrorGam[i, j] = cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
+  }
+  plot(CVerrorGam[i, 1:max_spline_term], 
+       main = paste("For ", i, " Spline Degrees of Freedom for Homicide (Held Constant)"), 
+       xlab = "Degree for Trade Regulation", ylab = "CV Error", type = "l")
+}
+
+gam_final_best = glm(hf_score ~ 
+                       ns(ef_trade_regulatory, arrayInd(which.min(CVerrorGam), dim(CVerrorGam))[1,2]) + 
+                       ns(pf_ss_homicide, arrayInd(which.min(CVerrorGam), dim(CVerrorGam))[1,1]) + . - ef_trade_regulatory - pf_ss_homicide, 
+                     data = hfi_data_combined_train)
+
+yhat = predict(gam_final_best, newdata = hfi_data_combined_test)
+gam_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+paste("The degrees of freedom of spline for Homicide:", arrayInd(which.min(CVerrorGam), dim(CVerrorGam))[1,1])
+paste("The degrees of freedom of spline for Trade Regulation:", arrayInd(which.min(CVerrorGam), dim(CVerrorGam))[1,2])
+paste("The Cross-Validated MSE for the GAMs tested:", round(min(CVerrorGam)), 6)
+paste("GAM Test MSE:", round(gam_test_mse, 6))
+paste("Mean TSS of Test Set:", round(mean_tss_test, 6))
+paste("MSE of forward selection MLR model:", round(final_forward_mse, 6))
+
+
 ```
 
-The 10-fold CV error from the natural cubic spline GAM (`r CVerrorGAM`) is very close to the CV error from the polynomial regression, but slightly larger. The interpretation of the error is the same as the interpretation provided above for the polynomial regression.
 
-And lastly I will try a smoothing spline GAM, assuming the same two predictors have non-linear relationships with hf_score, and that the degrees of freedom uncovered in the splines section minimize test error. Because the GAM function does not have a follow-up function to easily calculate the cross-validation error, I will use a test/train split approach. 
+Using cross-validation to find the best model that does not overfit with the training data with GAM of variable spline DoF for Homicide and Trade Regulation. The test MSE of the lowest CV MSE for the GAMs tested resulted in a very accurate MSE of `r round(gam_test_mse, 6)` compared to the mean TSS of the test set of `r round(mean_tss_test, 6)`.
 
-(Note: given that incorporating non-linearities does not appear to be improving model fit, and because given the nature of the data which logically does not imply non-linearity, and therefore I am choosing to use a simple test/train approach, rather than investing lots of time to write a formula that calculates CV error).
+We will now perform the GAMs with SMOOTHING splines to try and reduce the variance where the splines split:
 
-```{r}
-set.seed(111)
-gam1= gam(hf_score ~ pf_movement_domestic+
-                pf_expression_control+
-                pf_identity_sex_male+
-                ef_legal_courts+
-                ef_legal_gender+
-                ef_money_sd+
-                ef_money_currency+
-                ef_regulation_credit+
-               s(ef_trade_regulatory ,8)+
-               s(pf_ss_homicide,6),data=hfi.combined.train)
-plot(gam1, se=TRUE ,col =" blue")
+```{r gams_smooth_splines}
+CVerrorGamSmooth = matrix(data=rep(rep(0, max_spline_term), max_spline_term), nrow=max_spline_term, 
+                          ncol = max_spline_term)
+for (i in 1:max_spline_term) {
+  for (j in 1:max_spline_term){
+    fit = gam(hf_score ~ s(pf_ss_homicide, i) + s(ef_trade_regulatory, j) + . -
+                ef_trade_regulatory - pf_ss_homicide, data = hfi_data_combined_train)
+    CVerrorGamSmooth[i, j] = cv.glm(hfi_data_combined_train, fit, K = 10)$delta[1]
+  }
+  plot(CVerrorGamSmooth[i, 1:max_spline_term], 
+       main = paste("For ", i, " Smooth Spline Degrees of Freedom for Homicide (Held Constant)"), 
+       xlab = "Degree for Trade Regulation", ylab = "CV Error", type = "l")
+}
+
+gam_smooth_final_best = glm(hf_score ~ 
+                              s(ef_trade_regulatory, arrayInd(which.min(CVerrorGamSmooth), dim(CVerrorGamSmooth))[1,2]) + 
+                              s(pf_ss_homicide, arrayInd(which.min(CVerrorGamSmooth), dim(CVerrorGamSmooth))[1,1]) + 
+                              . - ef_trade_regulatory - pf_ss_homicide, data = hfi_data_combined_train)
+yhat = predict(gam_smooth_final_best, newdata = hfi_data_combined_test)
+gam_smooth_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+paste("The Results for SMOOTHING Splines")
+paste("The degrees of freedom of spline (smoothing) for Homicide:", arrayInd(which.min(CVerrorGamSmooth), dim(CVerrorGamSmooth))[1,1])
+paste("The degrees of freedom of spline (smoothing) for Trade Regulation:", arrayInd(which.min(CVerrorGamSmooth), dim(CVerrorGamSmooth))[1,2])
+paste("The Cross-Validated MSE for the GAMs Smoothing Splines tested:", round(min(CVerrorGamSmooth), 6))
+paste("GAM (smoothing splines) Test MSE:", round(gam_smooth_test_mse, 6))
+paste("Mean TSS of Test Set:", round(mean_tss_test, 6))
+paste("MSE of forward selection MLR model:", round(final_forward_mse, 6))
+
 ```
 
-```{r}
-preds=predict (gam1, newdata = hfi.combined.test)
-testMSE.smoothspline = mean((hfi.combined.test$hf_score - preds)^2)
-testMSE.smoothspline
-fit14=testMSE.smoothspline
-TSS <- mean((hfi.combined.test$hf_score - mean(hfi.combined.test$hf_score))^2)
-Rsquared.smoothspline <- 1 - testMSE.smoothspline / TSS
-Rsquared.smoothspline
-```
+Smoothing the splines seem to result in a worse model than the non-smoothed splines. This finding indicates we are biasing the model in a negative way by forcing the smoothing of splines. 
 
-The cubic Smoothing Spline GAM yields a test MSE of `r testMSE.smoothspline`, which is very similar to the 10-fold CV error rates of the polynomial regression with 10 predictors (`r CVerror.poly`), as well as the natural cubic spline GAM (`r CVerrorGAM`).
+Overall, the resulting GAMs are very accurate and minimize the MSE either equal or marginally better than the best-subset of MLR model. However, the added complexity and variance of the model seems unnecessary for less than a 1% improvement of the test MSE. We prefer the polynomial regression to the GAMs because the splines and GAMs tend to have large degrees of freedom to capture more variance, but it fails to deliver better results (granted the results of plain MLR are already very good). 
 
+In conclusion, we prefer the best-subset or forward selection models as they tend to be very close in accuracy as the polynomial regression, splines, and GAMs while being simpler. 
+
+
+\bigskip
 
 ## 4.4 KNN Regression
 
-```{r}
-set.seed(111)
-# var to select number of groups to split data into for CV
-kfold.number = 10
-# the greatest 'K' KNN will run (no point going higher than 20 ...)
-top_k = 20
-# average of the Cross-Validated test errors
-avg_mse_knn = rep(0, top_k)
+```{r knn_regression}
+#########################    KNN REGRESSION   #############################
+# simply used to get same results regardless of run. Methods should be robust to the seed changing, though
+set.seed(111) 
 
-# this randomly assigns a 'group k' to each observation
-hfi.combined$groups =  sample(rep(1:kfold.number, 200)) %>%
-  head(nrow(hfi.combined))
+# Lowest and Highest value of k allowed
+k_folds = 10
+top_correlated = 11 # really is 10 as hf_score is included; so 11 - 1 = 10 most correlated predictors
+lowest_k = 3
+highest_k = 10 # could do higher, but the lower the 'K' is, the better the results
 
-# now iterate for ALL 3 through top_k as the 'K' in KNN
-# Starts at 3 because it does not seem to work with only
-# 1 or 2 as the K (do not know why...)
-for (k in 3:top_k) {
-  # vector of the MSEs for current KNN.Regression
-  mse_list_knn = rep(0, kfold.number)
-  for (i in 1:kfold.number){
-    # split into test and train set depending on i (i == test group)
-    test_set = hfi.combined %>% filter(groups == i)
-    test_res = test_set %>% dplyr::select(hf_score)
-    test_set = test_set %>% dplyr::select(-c(hf_score, groups))
+# 2 by 1 graphs
+par(mfrow=c(2,1))
 
-    train_set = hfi.combined %>% filter(groups != i)
-    train_res = train_set %>% dplyr::select(hf_score)
-    train_set = train_set %>% dplyr::select(-c(hf_score, groups))
+do_knn = function(title_string, is_top_correlated){
+  # the cross-validated MSE of all K 
+  knn_regression_mse = rep(-1,highest_k - lowest_k + 1)
+  for(k in lowest_k:highest_k){
+    if(is_top_correlated){
+      knn_reg = knn.reg(train = (hfi_data_combined_train %>% 
+                                   select(c(names(abs_sorted_hf_score_correlations %>% head(top_correlated))), -hf_score)),
+                      y = hfi_data_combined_train$hf_score, k = k)
+    }else{
+      knn_reg = knn.reg(train = (hfi_data_combined_train %>% select(-hf_score)),
+                        y = hfi_data_combined_train$hf_score, k = k)
+    }
 
-    # predict and calculate the MSE
-    preds = knn.reg(train = train_set, test = test_set, y = train_res, k = k)
-    mse_list_knn[i] = mean((test_res$hf_score - preds$pred)^2)
+    knn_regression_mse[k - lowest_k + 1] = mean((knn_reg$pred - hfi_data_combined_train$hf_score)^2)
   }
-  # take average of all top_k MSE's gathered
-  avg_mse_knn[k] = mean(mse_list_knn)
+  
+  plot(main = title_string, x=lowest_k:highest_k, y = knn_regression_mse, 
+       xlab = "K Nearest Neighbors Used", ylab = "Cross Validated MSE") + 
+    lines(x=lowest_k:highest_k, y = knn_regression_mse) + 
+    points(x = (which.min(knn_regression_mse) + lowest_k - 1),
+           y = min(knn_regression_mse), col ="red", cex=2, pch =19) +
+    text(x = (which.min(knn_regression_mse) + lowest_k - 1), y = min(knn_regression_mse),
+         labels = paste(round(min(knn_regression_mse), 4)), pos = 4)
+  
+  knn_regression_mse
 }
 
-# print the MSE's
-for (i in 1:(length(avg_mse_knn)-2)){
-  string.to.print = paste( "K: ", i+2, "; (10-Fold CV Error): ", avg_mse_knn[i+2])
-  print(string.to.print)
-}
+# do KNN regression with 1ll 39 predictors
+knn_regression_mse_default = do_knn(title_string = "Cross-Validated MSE for KNN with All Predictors", 
+                                    is_top_correlated = FALSE)
+
+
+
+# Try with only limited variables
+# this will select the top_correlated highest correlated vars with hf_score
+# then attempt the KNN regression on this smaller dataset
+knn_regression_mse_diff = do_knn(title_string = paste("Cross-Validated MSE for KNN with", top_correlated - 1, "Predictors"), 
+                                 is_top_correlated = TRUE)
+
+
+# test the 3-k models
+knn_default_best = knn.reg(train = (hfi_data_combined_train %>% select(-hf_score)),
+                           test = (hfi_data_combined_test %>% select(-hf_score)),
+                           y = hfi_data_combined_train$hf_score, 
+                           k = (lowest_k - 1 + which.min(knn_regression_mse_default)))
+knn_default_test_mse = mean((knn_default_best$pred - hfi_data_combined_test$hf_score)^2)
+
+
+knn_limit_pred_best = knn.reg(train = (hfi_data_combined_train %>% 
+                                      select(c(names(abs_sorted_hf_score_correlations %>% head(top_correlated))), -hf_score)),
+                           test = (hfi_data_combined_test %>% 
+                                     select(c(names(abs_sorted_hf_score_correlations %>% head(top_correlated))), -hf_score)),
+                           y = hfi_data_combined_train$hf_score,
+                           k = (lowest_k - 1 + which.min(knn_regression_mse_diff)))
+knn_limit_pred_best_mse = mean((knn_limit_pred_best$pred - hfi_data_combined_test$hf_score)^2)
+
+
+paste("The Predictors Used in the", top_correlated - 1, "Predictor Model:", 
+      paste(c(names(abs_sorted_hf_score_correlations %>% head(top_correlated))), collapse = ", "))
+paste("The Mean TSS of the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE of Forward Selection MLR:", round(final_forward_mse, 6))
+paste("The Test MSE of ALL 39 Predictor Model:", round(knn_default_test_mse, 6))
+paste("The Test MSE of", top_correlated, "Predictor Model:", round(knn_limit_pred_best_mse, 6))
+
+
+# 1 by 1 graphs
+par(mfrow=c(1,1))
 ```
 
-```{r, tidy=TRUE, tidy.opts=list(width.cutoff=60)}
-plot(avg_mse_knn[3:20], ylim=c(0.0,0.11),xlab="Choice of K in KNN", ylab="10-Fold CV Error", type="b")
-textxy(c(1:20), c(avg_mse_knn[3:20]),labs=c(3:20), col = "red")
-fit15=avg_mse_knn[3]
-```
+There are 2 different KNN regressions. Both regressions are tested on the training set using cross validation (Leave one out cross-validation). We take the best cross-validated K, and create those models. The first KNN model uses all 39 predictors. The second KNN model uses the top `r top_correlated - 1` correlated predictors only using KNN regression. For both models, the value for 'K' is 3. It seems that the lower the K, the more accurate the model becomes.
 
-The KNN regression for K=3 yields the lowest 10-fold CV error of `r avg_mse_knn[3]` Although the CV Error is less than the CV error of the full OLS model of `r fit1`, KNN provides no information on which predictors are significant, nor does it achieve our goal of reducing the number of variables to understand a smaller subset of predictors that define HFI.
+- The 39 Predictor model returns an impressive Test MSE of `r round(knn_default_test_mse, 6)`. The Test MSE is superior to the MLR Test MSE from forward selection (`r round(final_forward_mse, 6)`).
 
-```{r}
-rm(gam1, polyfit, polyfit2, polyfit3, polyfit4, polyfit5, polyfit6, pred2, preds, se.bands, test_res, test_set, train_res, train_set, x, avg_mse_knn, CVerror, CVerror.poly, CVerrorGAM, CVerrorSpline, ef_trade_regulatory.grid, ef_trade_regulatorylims, i, k, kfold.number, mse_list_knn, Rsquared.smoothspline, string.to.print, testMSE.smoothspline, top_k)
-```
+- The top `r top_correlated - 1` KNN model returns a less impressive Test MSE of `r round(knn_limit_pred_best_mse, 6)` compared to the forward selection model (using ~30 predictors) of `r round(final_forward_mse, 6)`. Even though the MSE is not as good as the full 39 predictor model nor the MLR model, it does surprisingly well with fewer predictors.
+
+Overall, the KNN regression results in the lowest test MSE seen so far. The model seems to be very accurate, especially with all predictors being used to train the model. However, KNN is unsupervised, and therefore we have very little ability to judge which predictors are most important. Additionally, the test MSE is lower than the MLR, but it only explains ~1-2% more variance within the data. This small difference in model variance explained, is not enough to merit this model over the MLR methods performed beforehand. Thus, we will not focus on KNN as it fails to deliver meaningful insights regarding predictor significance or importance. 
+
+An important note is that K=3 is the most variant model we can create. Meaning the data does not seem to overfit with additional variance within a model. This finding indicates the data is heavily correlated and linked together, which it is. 
+
+\bigskip
+
+## 4.5 Conclusions on Non-Linear Methods
+
+Overall, the non-linear methods due capture more variance than the MLR models, however, the gains in prediction ability (lower MSE) come at the cost of inferencing ability. This inferencing ability for MLR allows us to determine with ease the most significant predictors using T-tests and F-Tests. The polynomial terms for Homicide and Trade Regulation is something to keep in mind for the final part of our analysis. The polynomial terms in a smaller model may help increase accuracy. The splines, GAMs, and smoothed spline GAMs offered some better models (GAMs with non-smoothed splines), but failed to significantly improve accuracy compared to the forward regression model. In conclusion, we decided to sill prefer the best-subset model over these non-linear models as an improvement of accuracy equal to **less** than 1% is not worth the less inferencing ability and added complexity over the basic MLR.
+
+
+\bigskip
+\newpage
+
+
 
 # 5. Tree-Based Methods
 
 ## 5.1 Standard Regression Tree
 
-```{r}
-##Fitting a regression tree:
-tree1= tree(hf_score~.,hfi.combined)
-tree.hfi= cv.tree(tree1, K = 10)
-summary(tree1)
-tree2= rpart(hf_score~.,hfi.combined)
-prp(tree2)
-text(tree1, pretty =1)
-plot(tree.hfi$size,tree.hfi$dev, type = "b")
-points(12, tree.hfi$dev[tree.hfi$size[12]], col = "red", cex = 2, pch = 20)
-tree.hfi$dev[tree.hfi$size[12]]
-fit16=.1643
+```{r tree_analysis}
+# simply used to get same results regardless of run. Methods should be robust to the seed changing, though
+set.seed(111) 
+
+par(mfrow=c(1,1))
+
+# Standard Regression Tree
+tree_regression = rpart(hf_score ~ ., data=hfi_data_combined_train)
+rpart.plot(tree_regression)
+
+# the tree is the same as above, but rpart has nice plotting
+cv_tree_base = tree(hf_score ~ ., data=hfi_data_combined_train)
+cv_tree_regression = cv.tree(cv_tree_base, K = k_folds)
+plot(cv_tree_regression$size, cv_tree_regression$dev, type="b",
+     main = "Tree Regression Errors (cv.tree())", 
+     ylab = "Cross-Validated Deviation", xlab = "Tree Regression Size") + 
+  points(cv_tree_regression$size[which.min(cv_tree_regression$dev)], 
+         min(cv_tree_regression$dev), 
+         col="red", cex = 2, pch = 19)
+
 ```
 
 Eight variables are used in constructing the standard tree on the full data set, which has 12 terminal nodes. They are pf_expression_control, ef_trade_movement_visit, ef_trade_tariffs_mean, ef_legal_military, ef_trade_regulatory, ef_legal_gender, ef_trade_tariffs_sd, and ef_legal_courts.
 
-We obtain 10-fold cross validated errors for trees of different sizes, which shows that the most complicated tree (12 terminal nodes) has the lowest 10-fold CV deviance of `r tree.hfi$dev[tree.hfi$size[12]]`, which corresponds to a 10-fold CV error of `r fit16`. This tree was grown by selecting splits that maximize the reduction in training MSE, and splitting continued until 12 terminal nodes, at which point the terminal nodes are too small or too few to be split.
+We obtain 10-fold cross validated errors for trees of different sizes, which shows that the most complicated tree (13 terminal nodes) has the lowest 10-fold CV deviance. This tree was grown by selecting splits that maximize the reduction in training MSE, and splitting continued until 12 terminal nodes, at which point the terminal nodes are too small or too few to be split.
 
-## 5.2 Standard Regression Tree with Pruning
+No pruning is needed as the cross-validated tree shows it performs best with the most complex model.
 
-```{r}
-pruned.tree =prune.tree(tree1, best=8)
-summary(pruned.tree)
-plot(pruned.tree)
-text(pruned.tree, pretty =1)
-fit17=.2213
+### A further look into the tree:
+
+```{r tree_depth}
+## No pruning is needed. Most complex model is best model.
+summary(cv_tree_base)
+
+# Test on the test set
+tree_predictions = predict(cv_tree_base, newdata = hfi_data_combined_test)
+pruned_tree_test_mse = mean((tree_predictions - hfi_data_combined_test$hf_score) ^ 2)
+
 ```
 
-Even though the tree with 12 terminal nodes minimized CV error, we can see that CV error levels off around 8 terminal nodes. So we prune the tree to include only 8 terminal nodes which results in a slightly higher test MSE of `r fit17`, with splits on only six variables: pf_expression_control, ef_trade_movement_visit, ef_trade_tariffs_mean,   ef_trade_regulatory, ef_legal_gender, and ef_legal_courts.
+The "Residual Mean Deviance" is the MSE and it does significantly worse than the linear models and dimension reduction models (0.14 versus < 0.05; smaller the better). The test MSE is `r round(pruned_tree_test_mse, 6)` which again makes the tree look like a much worse model than the linear models and non-linear models above.
 
-## 5.3 Bagging and Random Forests
+\bigskip
 
-```{r}
+## 5.2 Bagging and Random Forests
+
+```{r rf_analysis}
+# RANDOM FOREST AND BAGGING
 set.seed(111)
-rf.train= hfi.combined.train[ ,-40]
-rf.test=hfi.combined.test[,-40]
-rf.resp.train <- hfi.combined.train[, 40]
-rf.resp.test <- hfi.combined.test[, 40]
-bag= randomForest(rf.train, y=rf.resp.train, xtest=rf.test, ytest=rf.resp.test, mtry=(ncol(hfi.combined)-1), ntree=1000, importance=TRUE)
-rf1= randomForest(rf.train, y=rf.resp.train, xtest=rf.test, ytest=rf.resp.test, mtry=((ncol(hfi.combined)-1)/3), ntree=1000, importance=TRUE)
-rf2= randomForest(rf.train, y=rf.resp.train, xtest=rf.test, ytest=rf.resp.test, mtry=sqrt((ncol(hfi.combined)-1)), ntree=1000, importance=TRUE)
-rf3= randomForest(rf.train, y=rf.resp.train, xtest=rf.test, ytest=rf.resp.test, mtry=5, ntree=1000, importance=TRUE)
-
-plot(1:1000, bag$test$mse, col = "blue", type = "l", xlab = "Number of Trees", ylab = "Test MSE", ylim = c(0, .15))
-lines(1:1000, rf1$test$mse, col = "purple", type = "l")
-lines(1:1000, rf2$test$mse, col = "red", type = "l")
-lines(1:1000, rf3$test$mse, col = "green", type = "l")
-legend("topright", c("mtry = p (bagging)", "mtry = p/3", "mtry = sqrt(p)", "mtry = 5"), col = c("blue", "purple", "red", "green"), cex = 1, lty = 1)
-```
-
-```{r}
-which.min(bag$test$mse)
-fit18=bag$test$mse[which.min(bag$test$mse)]
-which.min(rf1$test$mse)
-fit19=rf1$test$mse[which.min(rf1$test$mse)]
-```
-
-Random forests perform better than bagging. The bagging model with the smallest test MSE of `r bag$test$mse[which.min(bag$test$mse)]` uses `r which.min(bag$test$mse)` trees. The random forest model with the smallest test MSE of `r rf1$test$mse[which.min(rf1$test$mse)]` uses `r which.min(rf1$test$mse)` trees and corresponds to a mtry of $mtry=p/3$.
-
-Like KNN, this model results in a very low test MSE, meaning that it is very good for prediction. But because the tree is fully grown, it is difficult to use for inference. The five most important variables in the best random forest model are in terms of decrease of accuracy in predictions on the out of bag samples when a given variable is excluded from the model are: ef_legal_gender
-pf_expression_control, ef_trade_tariffs_mean, ef_legal_courts, pf_ss_homicide
+default_ntrees = 500 
 
 
-```{r}
-importance(rf1)
-```
-
-## 5.4 Boosting
-
-
-```{r}
-set.seed(1)
-exponents = seq(-4, -0.2, by = 0.1)
-lambda = 10^exponents
-testMSE.boost= rep(NA, length(lambda))
-for (i in 1:length(lambda)) {
-boost.hfi=gbm(hf_score~.,data=hfi.combined.train, distribution="gaussian", n.trees=1000, shrinkage =lambda[i])
-    
-    pred.test <- predict(boost.hfi, hfi.combined.test, n.trees = 1000)
-    testMSE.boost[i] <- mean((pred.test - hfi.combined.test$hf_score)^2)
-}
-```
-
-```{r}
-plot(lambda, testMSE.boost, type = "b", xlab = "Lambdas", ylab = "Test MSE")
-lambda[which.min(testMSE.boost)]
-fit20=testMSE.boost[which.min(testMSE.boost)]
-points(lambda[which.min(testMSE.boost)], testMSE.boost[which.min(testMSE.boost)], col = "red", cex = 2, pch = 20)
-```
-
-Here we perform boosting on the training set with 1,000 trees for a range of values of the shrinkage parameter (lambda). The test MSE for boosting, using the best lambda of (`r lambda[which.min(testMSE.boost)]`) is `r testMSE.boost[which.min(testMSE.boost)]`. This is slightly higher than the test MSE of the best random forests model which had a a test MSE of `r rf1$test$mse[which.min(rf1$test$mse)]`.
-
-
-# 6. Summary of Results
-
-```{r}
-summary(hfi.combined$hf_score)
-```
-```{r}
-x=matrix(data=
-c("Full OLS, 39 Predictors (test/train)",
-"Full OLS, 39 Predictors (10-fold CV)",
-"Forward Select, 26 Predictors (test/train)",
-"Forward Select, 35 Predictors (10-fold CV)",
-"Best Subset, 26 Predictors (test/train)",
-"Best Subset, 30 Predictors (10-fold CV)",
-"Ridge, 39 Predictors (test/train)",
-"Lasso, 34 Predictors (test/train)",
-"PCR, 37 Components, (test/train)",
-"PLS, 9 Components, (test/train)",
-"Polynomial Regression (10-fold CV)",
-"Natural Cubic Spline (10-fold CV)",
-"Natural Cubic Spline GAM (10-fold CV)",
-"Cubic Smoothing Spline GAM (test/train)",
-"KNN Regression, K=3 (10-fold CV)",
-"Standard Tree (12 t. nodes) (10-fold CV)",
-"Pruned Tree (8 t. nodes) (10-fold CV)",
-"Bagging (154 trees) (test/train)",
-"Random Forest (124 trees)(test/train)",
-"Boosting (Additive (d=1), 1000 trees) (test/train)",
-fit1,
-fit2,
-fit3,
-fit4,
-fit5,
-fit6,
-fit7,
-fit8,
-fit9,
-fit10,
-fit11,
-fit12,
-fit13,
-fit14,
-fit15,
-fit16,
-fit17,
-fit18,
-fit19,
-fit20),
-nrow=20, ncol=2) 
-colnames(x) <- c("Method","test MSE")
-rownames(x) <- c("1","2", "3", "4", "5", "6", "7", "8", "9", "10","11","12","13","14","15", "16","17","18","19","20")
-x
-```
-
-# 7. Explaining Our Results: Why Are Our Models Predicting So Well?
-
-## 7.1 Permutation Tests of Correlation on Features
-
-```{r}
-####################################################################################################
-####################################################################################################
-####################################################################################################
-
-#  Permutation Testing on correlation between ALL features 
-
-####################################################################################################
-####################################################################################################
-####################################################################################################
-
-
-nperms = 3000
-sig.level = 0.025
-actual.cor.matrix = cor(x = hfi.features)
-perm.cor.matrix.upper = matrix(NA , ncol = ncol(hfi.features), nrow = ncol(hfi.features))
-perm.cor.matrix.lower = matrix(NA , ncol = ncol(hfi.features), nrow = ncol(hfi.features))
-
-for ( i in 1:ncol(hfi.features)){
-  for( j in 1:ncol(hfi.features)){
-    if( i > j){
-      # ONLY do half the matrix
-      perm.vector = rep(-10, nperms)
-      for (k in 1:nperms) {
-        shuffle.i = sample(x = hfi.features[[i]], size = nrow(hfi.features), replace = FALSE) 
-        perm.vector[k] = cor(shuffle.i, hfi.features[[j]])
-      }
-      perm.cor.matrix.lower[i,j] = quantile(perm.vector, sig.level)
-      perm.cor.matrix.upper[i,j] = quantile(perm.vector, 1-sig.level)
-    }
-  }  
+# Store the TEST MSE for all MTrys we are testing 
+random_forests = data.frame(MTry = numeric(9), Test_MSE = numeric(9))
+forest_i = 1 
+for (current_mtry in seq(from = 5, to = 35, by = 5)){
+  random_forest = randomForest(hf_score ~ ., data = hfi_data_combined_train,
+                       ntree = default_ntrees, mtry = ncol(hfi_data_combined_train) - 1)
+  yhat = predict(random_forest, newdata = hfi_data_combined_test)
+  random_forests$MTry[forest_i] = current_mtry
+  random_forests$Test_MSE[forest_i] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+  forest_i = forest_i + 1
 }
 
-total = 0
-count = 0
-col.names = colnames(hfi.features)
-for ( i in 1:ncol(hfi.features)){
-  for( j in 1:ncol(hfi.features)){
-    total = total + 1
-    if( i > j & 
-        actual.cor.matrix[i,j] < perm.cor.matrix.upper[i,j] &
-        actual.cor.matrix[i,j] > perm.cor.matrix.lower[i,j] ){
-      cat(paste("\n[", col.names[i], "," , col.names[j], "] \nactual cor: ", 
-                actual.cor.matrix[i,j], ";\npermutated [lower,upper]: [", 
-                perm.cor.matrix.lower[i,j], ",", 
-                perm.cor.matrix.upper[i,j], "]\n"))  
-      count = count + 1
-    }
-  }
-}
-count
-total
-count/total
 
+# BAGGING (MTY == 39 or all possible predictors)
+random_forest = randomForest(hf_score ~ ., data = hfi_data_combined_train,
+                       ntree = default_ntrees, mtry = ncol(hfi_data_combined_train) - 1)
+# bagging; Subtract 1 for the hf_score response in the dataframe
+random_forests$MTry[forest_i] = ncol(hfi_data_combined_train) - 1 
+yhat = predict(random_forest, newdata = hfi_data_combined_test)
+random_forests$Test_MSE[forest_i] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+forest_i = forest_i + 1
+
+
+# p/3; this is the recommended value of 'MTry'
+recommended_forest = randomForest(hf_score ~ ., data = hfi_data_combined_train,
+                       ntree = default_ntrees, mtry = round((ncol(hfi_data_combined_train) - 1)/ 3),
+                       importance = TRUE)
+
+random_forests$MTry[forest_i] = round((ncol(hfi_data_combined_train) - 1)/ 3)
+yhat = predict(recommended_forest, newdata = hfi_data_combined_test)
+random_forests$Test_MSE[forest_i] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+forest_i = forest_i + 1
+
+
+random_forests = random_forests %>% arrange(MTry)
+
+plot(x = random_forests$MTry, y = random_forests$Test_MSE, type = "line",
+     main = "The 'MTry' Values and Resulting Test MSE", ylab = 'MSE',
+     xlab = "MTry Values (Number of Variables to Choose From at Split)") +
+  points(x = random_forests$MTry, y = random_forests$Test_MSE) +
+  points(x = random_forests$MTry[which.min(random_forests$Test_MSE)],
+         y = min(random_forests$Test_MSE), col="red", cex = 2, pch = 19) +
+  text(x = random_forests$MTry[which.min(random_forests$Test_MSE)],
+       y = min(random_forests$Test_MSE), 
+       labels = paste("MSE:", round(min(random_forests$Test_MSE),4) ), 
+       pos = 3, offset = 2)
+
+# Importance from Recommended MTry of p/3
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE for the Forward Selection MLR Model:", round(final_forward_mse, 6))
+paste("The following Test MSE for Random Forest of Varying MTrys:")
+random_forests
+
+a = as.data.frame(recommended_forest$importance)
+colnames(a)[1] = "IncMSE"
+a %>% arrange(desc(IncMSE)) %>% head(20)
 ```
 
-Looking at the Correlation of the Predictors VS response (hf_score):
-
-```{r}
-# variable to store number of permutations to create for each predictor
-nperms = 1000
-# significnace level (2-sided)
-sig.level = .01
-# the vector of ACTUAL correlation to compare
-actual.cors = rep(-10, ncol(hfi.features))
-cor.significant = rep(FALSE, ncol(hfi.features))
-# the matrix of permuatated correlations
-cor.perms = matrix(data = -9 , nrow = ncol(hfi.features), ncol = nperms)
-# the quartiles
-quantiles = matrix(data = -1, nrow = ncol(hfi.features), ncol = 2)
+Bagging is a random forest with the MTry of all possible predictors. This model often can result in good results as it is high in variance or can lead to an overfit of a model. My guess, since the MSE is worse than all other MTry values, there was an overfit issue. Additionally, the random forest models tend to stagnate between 10, 13, and 15 predictors. This finding is in line with the typical thinking of the ideal Mtry is roughly 1/3 the predictors (13 predictors in this case). 
 
 
-# iterate over all predictors
-for (predictor in 1:(ncol(hfi.features))){
-  # for each predictor, do nperm number of permutations
-  for( perm in 1:nperms){
-    # shuffle the y-var (hf_score) for correlation (should then be 0 cor) 
-    hf_scores.train.shuffled = sample(hfi.response$hf_score,  
-                                    size = nrow(hfi.features), 
-                                    replace = FALSE)
-    
-    # get the permuted correlation with randomized y-var (hf_score)
-    cor.perms[predictor, perm] = cor(x = hfi.features[,predictor], 
-                                     y = hf_scores.train.shuffled)
-  }
-  # calculate the ACTUAL cor for the hf_score and current predictor
-  actual.cors[predictor] = cor(hfi.response$hf_score, hfi.features[predictor])
-  # calculate the quantiles (looks cool)
-  quantiles[predictor,] = c(quantile(cor.perms[predictor], sig.level), 
-                            quantile(cor.perms[predictor], 1 - sig.level))
-  # Finally, set the vector of booleans to TRUE iff significant
-  if( actual.cors[predictor] > quantiles[predictor, 2] | 
-      actual.cors[predictor] < quantiles[predictor, 1]  ){
-    cor.significant[predictor] = TRUE
-  }
-}
+The bagged model results in an MSE of `r tail(random_forests, 1)$Test_MSE`. 
+The best model with the lowest MSE was `r round(((random_forests %>% arrange(Test_MSE) %>% head(1))$Test_MSE), 6)`.
 
-# print the quantiles combined with actual correlation vector
-df.perm.and.cor = as.data.frame(quantiles)
-df.perm.and.cor$actual.cor = actual.cors
-# changing the colnames to be legible nad coherent
-colnames(df.perm.and.cor) = c("Lower Bound", "Upper Bound", "ACTUAL Cor")
-paste(2*sig.level, " is the significance level")
-df.perm.and.cor
+Like KNN, this model results in a very low test MSE, meaning that it is very good for prediction. But because the random forest is complex, there is limited inferencing available. However, random forest does have a proxy for significant predictors within the model by measuring importance. The importance is measured by how much of the model variance is explained by a singular predictor. This measurement is calculated by removing the predictor from the model and seeing how much worse the resulting MSE would be. This importance is not nearly as mathematical and robust as the T-tests or F-tests for MLR, unfortunately.
 
-# this counts number of predictors that are NOT significantly correlated
-num_false = 0
-for ( i in cor.significant){
-  if( i == FALSE){
-    num_false = num_false + 1
-  }
-}
-```
+The most important predictors are: 
 
-After analyzing the correlation using permutation testing, it seems that ALL predictors are correlated with hf_score with an alpha/significance level of `r 2*sig.level`. This is good, as the models that we create with these variables SHOULD be good. There are `r num_false` predictors that are not significantly different from a correlation of 0 (out of `r ncol(hfi.features)`. Additionally, the maximum correlation between ANY predictor and hf_score is `r max(actual.cors)` being the correlation of hf_score and `r colnames(hfi.features)[which.max(actual.cors)]`.
+- pf_expression_control (the control over citizen personal expression like speech)
 
-## 7.2 Bootstrap Test of Correlation on Features
+- pf_expression_influence (the amount of government influence on expression like ownership of media)
 
-Looking at the correlation of the predictors versus hf_score through bootstrapping
+- ef_legal_gender (how equal the economic system is for men versus women)
 
-```{r}
-# number of bootstraps to perform
-nboot = 1000
-results = matrix(ncol = nboot, nrow = ncol(hfi.features))
-boot.quants = matrix(ncol = 2, nrow = ncol(hfi.features))
+- ef_trade_tariffs_mean (how large the average tariffs are)
 
-for (predictor in 1:ncol(hfi.features)){
-  for( i in 1:nboot){
-    sample.index = sample(x = 1:nrow(hfi.features), 
-                          size = nrow(hfi.features) , 
-                          replace = TRUE)
-    new.hf_scores = hfi.response$hf_score[sample.index]
-    new.pred_vals = hfi.features[[predictor]][sample.index]
-    boot.cor = cor(x = new.pred_vals, y = new.hf_scores)
-    results[predictor, i] = boot.cor
-  }
-  boot.quants[predictor,] = c(quantile(results[predictor,], sig.level),
-                              quantile(results[predictor,], 1 - sig.level))
-}
+- ef_trade_regulatory (how much economic and trade regulation there is within country)
 
-boot.quants = as.data.frame(boot.quants)
-boot.quants$ACTUAL_cor = actual.cors
-paste(2*sig.level, " is the significance level")
-colnames(boot.quants) = c("Lower Bound", "Upper Bound", "ACTUAL Correlation")
-boot.quants
-```
+We will keep these predictors in mind for our final analysis. 
 
-Bootstrapping leads to the same conclusion as permutation testing: there seems to be correlation between ALL predictors and hf_score. None of the bootstrapped distributions of correlation had the value 0 within the `r 2*sig.level` alpha/significance level confidence intervals. This provides relatively good reason to believe the predictors ARE influencing the response, hf_score.
+\bigskip
 
-#8. Final Fit of Most Important Variables
-```{r}
+## 5.3 Boosting
+
+```{r boosting_analysis}
+# BOOSTING
 set.seed(111)
-finalfit= glm(hf_score ~ ef_legal_gender+
-pf_expression_control+
-ef_trade_tariffs_mean+
-ef_legal_courts+
-pf_ss_homicide+
-ef_trade_movement_visit+
-ef_trade_regulatory+
-ef_legal_military,data=hfi.combined)
-summary(finalfit)
+
+exponents = seq(-3, 0, by = 0.1)
+lambda = 0.02  # from preliminary tests, this seems consistently good; reduces time significantly
+default_ntrees = 3000
+max_inter_depth = 3  # this is more reasonable, typically, one does not need many leaf nodes per tree
+max_inter_depth = 5  # this is excessive. Will take a while. Only used to get overfitting in model.
+
+boosting_test_mse = rep(NA, 4)
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The MSE for the Forward Selection MLR Model:", round(final_forward_mse, 6))
+
+for( inter_depth in 1:max_inter_depth){
+  boosting_gbm = gbm(hf_score ~ ., data = hfi_data_combined_train, 
+                     distribution="gaussian", interaction.depth = inter_depth,
+                     n.trees=default_ntrees, shrinkage = lambda,
+                     cv.folds = 10)
+  
+  yhat = predict(boosting_gbm, newdata = hfi_data_combined_test, n.trees = default_ntrees)
+  boosting_test_mse[inter_depth] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+  print(paste("At Maximum Inter-Depth: ", inter_depth))
+  print(paste("10-Fold Cross-Validation Error Estimate is", 
+              round(boosting_gbm$cv.error[default_ntrees], 6)))
+  print(paste("Test MSE:", round(boosting_test_mse[inter_depth], 6)))
+  print(paste("Mean TSS of Test Set:", round(mean_tss_test, 6)))
+}
+
+boosting_depth_4 = gbm(hf_score ~ ., data = hfi_data_combined_train, 
+                       distribution="gaussian", interaction.depth = 4,
+                       n.trees=default_ntrees, shrinkage = lambda,
+                       cv.folds = 10)
+
+boosting_depth_1 = gbm(hf_score ~ ., data = hfi_data_combined_train, 
+                       distribution="gaussian", interaction.depth = 1,
+                       n.trees=default_ntrees, shrinkage = lambda,
+                       cv.folds = 10)
+
+par(mfrow=c(1,1))
 ```
 
-With just these eight variables we can explain 87 percent of the variation in HFI score. Four of these variables are selected by LASSO and BestSS, are split in the Standard Tree, and fall in the top 10 in importance for RF: ef_legal_gender, pf_expression_control, ef_legal_courts, ef_trade_regulatory. Another four are selected by three of four of the aforementioned approaches: pf_ss_homicide, ef_trade_movement_visit, ef_trade_tariffs_mean, and ef_legal_military.
+Here we perform boosting on the training set with `default_ntrees` trees with an initial round for each model selection. Since boosting takes a significant amount of time to run, we did some testing that seemed to indicate 0.02 is a good lambda value to use. The initial lambda value we used was 0.01, so very close to the standard. The shrinkage (lambda) parameter dictates how 'fast' the boosting model 'learns.' Lower the shrinkage, the slower the model learns; larger, the faster. Obviously faster learning sounds strictly better, but that is not the case. If the learning is too fast, then the model tends to overfit. If the model learns too slow, the model does not have enough iterations of tree creation to capture the variance. 
 
- The results suggest that the HFI score dataset and documentation may be overly complex, and the multi-organizational team of researchers and simplify there formula so that it is more accessible and easy to interpret by the public.
+We perform boosting with different tree depths allowed. The default boosting is with trees generated with a singular leaf node (inter-depth = 1). As the inter-depth increases, the amount of variance the model can capture increases as well. Again, overfit becomes an issue. We limit the max leaf nodes at 1 (default), 2, 3, and 4. We then find the MSE of the Test Set to see if there is overfitting concerns.   
 
-```{r}
-cv.error = cv.glm(hfi.combined, finalfit, K = 10)$delta[1]
-cv.error
+The test MSE of different inter_depths can be found in the output above (focus on the Test MSE as that is testing the model on new data). The important takeaways: 
+
+- At about inter-depth = 4 (aka, 4 leaf nodes per tree), the Test MSE is minimized the most. After the inter-depth > 4, model overfitting seems to occur or stagnation in the Test MSE.
+
+- We decide on the inter-depth of 4 as it has a very low test MSE compared to the other 9 models (not the lowest, but nearly). The other models that perform better on the test set, have minimal improvements.
+
+- Boosting does not offer much insight into the most significant predictors, but we can use the importance metric (same as Random Forest's importance metric) to gauge roughly the significance. These importance components of the model are the best insights we have regarding the black box boosting is. 
+
+Overall, boosting does better than the MLR forward selection model's Test MSE of `r round(final_forward_mse, 6)` compared to boosting models' Test MSEs of around ~0.02. Still, linear models have more use to us because of T-tests and F-tests, but these tree models (random forests and boosting) do deliver some impressive results and some insights. The insights on predictor importance are below:
+
+\bigskip
+
+## 5.4 Predictor Importance from Random Forests and Boosting
+
+We ignore the simple decision tree regression model as the MSE was disappointing. All other models above outperformed the tree model.
+
+We choose the recommended MTry size of 13 predictors (1/3 number of predictors) as the results were the best (or very marginally off of the best). 
+### The following output is the **most Important** predictors within the random forest model with MTry = 13 (recommended value): S
+
+```{r importance_rf}
+top_n_important_preds = 20
+
+# show the summary() of the RF (Mtry = 13) 
+rf_imp = as.data.frame(recommended_forest$importance)
+rf_imp %>% dplyr::arrange(desc(rf_imp$`%IncMSE`)) %>% head(top_n_important_preds)
 ```
+
+We found boosting to yield very accurate models. We use the inter-depth (number of leaf nodes) of value = 4 as the results were marginally off of the best boosting model with inter-depth 8 (significantly more complexity, which is unnecessary). 
+
+### The following output is the **most Influential** (or Important) predictors within the boosting model with inter-depth = 4: 
+
+```{r importance_boosting4}
+# the plots for boosting summary do not work well with our labels
+summary(boosting_depth_4, plotit=FALSE) %>% select(rel.inf) %>% head(top_n_important_preds)
+```
+
+We additionally use the default boosting model of inter-depth 1 (simple stub trees with only 1 leaf node created). This hyper-parameter for inter-depth is commonly used. We also got very promising results from this basic boosting model.
+
+### The following output is the **most Influential** (or Important) predictors within the boosting model with inter-depth = 1: 
+
+```{r importance_boosting1}
+summary(boosting_depth_1, plotit=FALSE) %>% select(rel.inf) %>% head(top_n_important_preds)
+```
+
+There seem to be some overlap in predictor relevance (significance or importance; all mean roughly the same) between the 3 models above. We will further analyze these results combined with the predictors found to be significant in other models (namely the MLR model found using forward selection and best-subset selection).
+
+
+
+\bigskip
+\newpage
+
+
+# 6. Conclusions from Analysis for Simplified Model
+
+This section will look at the overall results and findings from the completed methods and analyses above. This section will primarily target task 2 from our goals for the project (identify the most significant or relevant or influential predictors regarding human freedom). Then, we will attempt to simplify our models with the knowledge that certain predictors seem to be important, while other predictors less so.
+
+## 6.1 Initial Conclusions 
+
+Overall, many methods we used seemed to yield very accurate results (consistently more than 90% of the variance was explained). These findings help confirm that the human freedom score we were predicting is made up of these more specific predictors/variables. Potentially, the human freedom score is some weighted average of all 39 (maybe more predictors that we removed at the beginning during data tidying). The CATO Institute has a 400+ page manual and description of their Human Freedom Index. It details how certain variables (predictors within our model) are calculated, but we could not derive their method of calculating the final human freedom score (hf_score). 
+
+Our preliminary conclusions are:
+
+1. The Human Freedom Index has many predictors, many of which may be unnecessary. We tested various models with only 10 or 15 predictors, and yielded very accurate models (roughly equivalent to 85% R-Squared). Thus, we will later craft a simplified model that uses 10 - 20 predictors to minimize the MSE (maximize variance explained) and allow an easier model to comprehend as a human. 
+
+2. Certain predictors tend to be used in all models. Such as: pf_ss_homicide, pf_expression_control, ef_trade_regulatory / ef_trade_regulatory_compliance, pf_expression_influence, ef_legal_gender. Many of these predictors make sense for the high correlation with human freedom. If people are likely to be murdered, the human freedom of that country is probably lower. On the other hand, if media and expression (like art, discussions, public meetings) are not controlled by the government (like no censorship), then human freedom tends to be greater.
+
+\bigskip
+
+## 6.2 The Predictor Analysis
+
+We will highlight the various models that performed very well in an effort to highlight some of the most important / influential / significant predictors for human freedom. Then, we can use these findings to create as smaller, simplified model using a subset of the 39 total predictors.
+
+### Boosting Models' Findings Regarding Predictors:
+
+The best model we found was the boosting model of inter-depth = 4 (inter-depth of 1 was also very accurate) . The boosting model performed with an MSE around 0.02 (which equates to an R-Squared = ~97%). This accuracy is impressive and the predictors it viewed most influential on the model were pf_expression_control, ef_trade_tariffs_mean, ef_trade_regulatory_compliance, pf_expression_influence, ef_trade_regulatory, ef_legal_gender, ef_legal_military, ef_regulation_credit, ef_trade_movement_visit, ef_money_currency. We used the output from the above models (5.4) regarding rel.inf (relative influence on human freedom).
+
+### Random Forest Models' Findings Regarding Predictors:
+
+Another very accurate model was the Random Forest model with Mtry of 13. The predictors that the model gave the greatest importance level were: pf_expression_control, pf_expression_influence, ef_legal_gender, ef_trade_tariffs_mean, ef_trade_regulatory, ef_trade_regulatory_compliance, ef_legal_military, ef_trade_movement_visit, pf_ss_homicide, ef_regulation_credit. We used the output from above models (5.4) regarding the importance metric for estimating the importance of a predictor on human freedom.
+
+### Multiple Linear Regression Models' Findings Regarding Predictors:
+
+However, the basic Multiple Linear Regression model from forward selection and best-subset selection performed near these other 2 models with an MSE of roughly 0.042 for an R-Squared of roughly 95%. Very accurate model and very good for predictor inference. The predictors the MLR model found to be most significant were: pf_ss_homicide, ef_legal_gender, ef_legal_courts, ef_legal_military, ef_money_currency, ef_government_consumption, ef_legal_enforcement, pf_identity_sex_male, ef_trade_movement_visit, pf_movement_domestic, pf_movement_foreign, ef_money_sd, pf_identity_sex_female, ef_trade_tariffs_mean, pf_expression_influence, pf_expression_control. We used the output from above models (3.3.2) focusing on the T-values associated with predictors (cutoff was t-value > 5).
+
+### Correlation Matrix from Exploratory Analysis Findings:
+
+```{r correlation_matrix_analysis}
+temp_df = as.data.frame(actual_correlation_matrix)
+temp_df %>% select(hf_score) %>% arrange(desc(abs(hf_score))) 
+```
+
+The correlation matrix from the beginning of the analysis highlights many predictors are significantly correlated with human freedom score. Interestingly, the pf_expression_control and pf_expression_influence are both highly correlated with hf_score, but the linear model does not value these predictors as much. They may possibly be confounding, therefore reducing each others importance relative to the overall model. Overall, the correlation matches fairly strongly to the predictor importance findings with MLR, random forest, and boosting.
+
+### Other Models' Findings
+
+We are not going to analyze the polynomial regression as the default multiple linear regression model does well without the added complexity. We do not use GAMs or Splines as the inferencing for those methods are not straight forward, nor are they easy to use. The Lasso and Ridge analyses failed to deliver a better model than the MLR using forward selection. PCR and PLS are unnecessary as the predictors are transformed and therefore lose much of the interpretation of influence and significance. The KNN regression has near 0 inferencing ability, and thus we will not use it to analyze the predictor importance. The default, singular decision tree model is poor, and thus we will not analyze it, either.
+
+### Key Takeaways:
+
+We have a few primary takeaways. In the MLR, random forest, boosting models have the same predictors with greater influence on the model. Here are a list of predictors (with simple definitions) that appear in all 3 models as significant:
+
+- pf_expression_control or pf_expression_influence. This metric measures the censorship, control over media, and limitations on freedom of speech/assembly. This finding is intuitive. The more free people are to say what they want to say without persecution, the greater the human freedom tends to be. 
+
+- ef_legal_military, ef_legal_gender. How fair and just the judicial system is to military (does the military escape punishments or are they held accountable) and gender (is there legal burdens to a specific gender; typically women). Again, an intuitive finding. It makes sense that the more fair and just a nation's court system is, the greater the human freedom tends to be.
+
+- ef_trade_tariffs_mean and ef_trade_movement_visit. The economic freedom to trade without tariffs (free-trade) and the ability for foreign trade goods to easily move through the country. Basically, these measures estimate the ability to have good, easy, free trade. The more free the trade is, the greater the human freedom tends to be.
+
+Other predictors we find shared between the boosting and random forest models:
+
+- ef_trade_regulatory, ef_trade_regulatory_compliance, ef_regulation_credit. These three predictors are oriented toward measuring human freedom surrounding regulation of various parts of the economy including trade (foreign), compliance to regulations, and the credit sector. Again, the more free from stringent regulations and bureaucracy overhead, the greater the human freedom tends to be.
+
+Some other predictors that are important in the three models (less so in random forest and boosting, but very significant in MLR):
+
+- pf_ss_homicide. This predictor gauges how free people are to avoid being murdered. If a country has high murder rates, the human freedom tends to be lower.
+
+These variables help us to understand the major components of human freedom. Many variables within the dataset do not seem to affect human freedom as much has others. There is also a confounding issue, as many predictors have significant correlation with the human freedom, but also with other variables. These confounding relationships lead some models to ignore certain variables as another variable is capturing largely the 'same' variance. 
+
+```{r simple_lm_pf_expression_control}
+pf_expression_control_lm = lm(hf_score ~ pf_expression_control, data = hfi_data_combined_train)
+yhat = predict(pf_expression_control_lm, newdata = hfi_data_combined_test)
+pf_expression_control_lm_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+pf_expression_control_lm_test_r2 = round(1 - pf_expression_control_lm_test_mse / mean_tss_test, 6)
+
+pf_expression_tot_lm = lm(hf_score ~ pf_expression_control + pf_expression_influence , data = hfi_data_combined_train)
+yhat = predict(pf_expression_tot_lm, newdata = hfi_data_combined_test)
+pf_expression_tot_lm_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+pf_expression_tot_lm_test_r2 = round(1 - pf_expression_tot_lm_test_mse / mean_tss_test, 6)
+
+paste("The Test R-Squared for MLR with only pf_expression_control is:", pf_expression_control_lm_test_r2)
+paste("The Test R-Squared for MLR with pf_expression_control and pf_expression_influence is:", pf_expression_tot_lm_test_r2)
+```
+
+Another piece of evidence for the confounding relationships is the correlation matrix from section 2 (Exploratory Analysis). The correlation matrix indicates huge correlation of predictors, yet the MLR has more than 30 predictors within it. However, using just pf_expression_control would result in roughly an R-Squared of `r pf_expression_control_lm_test_r2`. Meaning a simple linear model with only 1 predictor results in a fairly accurate prediction. However if we add pf_expression_influence (the second most correlated variable to human freedom; first is pf_expression_control), the estimated test R-Squared is `r pf_expression_tot_lm_test_r2`. As we can see, the improvement to the model is negligible. This indicates that the 2 variables are confounded and explain the same variance within the human freedom metric.
+
+These results will allow us to build a simpler, basic model with the variables shared between the most accurate models to derive an accurate final model with less complexity and predictors. Ideally, this smaller model(s) will allow easy understanding of the main components of human freedom.
+
+\bigskip
+
+## 6.3 Predictors to Analyze for Final Models
+
+We will use the variables highlighted above (end of section 6.2, with details on what the predictor represents). These predictors and the models that showed they were significant or important are: 
+
+1. pf_expression_control (found in MLR, random forest, boosting)
+
+2. pf_expression_influence (found in MLR, random forest, boosting)
+
+3. ef_legal_gender (found in MLR, random forest, boosting)
+
+4. ef_legal_military (found in MLR, random forest, boosting)
+
+5. ef_trade_tariffs_mean (found in MLR, random forest, boosting)
+
+6. ef_trade_movement_visit (found in MLR, random forest, boosting)
+
+7. ef_trade_regulatory (found in random forest and boosting)
+
+8. ef_trade_regulatory_compliance (found in random forest and boosting)
+
+9. ef_regulation_credit (found in random forest and boosting)
+
+10. pf_ss_homicide (found in MLR and random forest)
+
+
+\bigskip
+
+
+## 6.4 Multiple Linear Regression Model, Simplified
+
+First we will perform a basic multiple linear regression model with the 10 predictors from above. 
+
+```{r confounders_located}
+cor(hfi_data_combined$ef_trade_regulatory, hfi_data_combined$ef_trade_regulatory_compliance)
+cor(hfi_data_combined$pf_expression_influence, hfi_data_combined$pf_expression_control)
+```
+
+The above correlations indicate the pairs of predictors (ef_trade_regulatory and ef_trade_regulatory_compliance; pf_expression_influence and pf_expression_control) are confounders. They are highly correlated, and thus capture the same variance within human variance. We tested this assumption with the MLR model with and without the pairs. We find in our analysis that the MLR needs only 8 of the 10 predictors. We removed the 2 predictors that were least significant: ef_trade_regulatory_compliance and pf_expression_control.
+
+
+
+```{r lm_simplified}
+names_of_preds = c("pf_expression_control", "pf_expression_influence", "ef_legal_gender", 
+                   "ef_legal_military", "ef_trade_tariffs_mean", "ef_trade_movement_visit", 
+                   "ef_trade_regulatory", "ef_trade_regulatory_compliance", "ef_regulation_credit",
+                   "pf_ss_homicide")
+final_lm_model = lm(paste("hf_score ~", paste(names_of_preds, collapse = " + "), "- ef_trade_regulatory_compliance - pf_expression_control"), data = hfi_data_combined_train)
+yhat = predict(final_lm_model, newdata = hfi_data_combined_test)
+final_lm_model_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+final_lm_model_r2 = round((1 - final_lm_model_mse / mean_tss_test) * 100, 2)
+
+paste("The Mean TSS of the Test Set:", round(mean_tss_test ,6))
+paste("The Test MSE of the Final MLR Model:", round(final_lm_model_mse ,6))
+paste("The Test R-Sqared of the Final MLR Model:", round(final_lm_model_r2 ,6))
+```
+
+We get a MLR model with a resulting Test MSE of `r round(final_lm_model_mse, 6)` compared to the mean TSS of `r round(mean_tss_test, 6)`. The models chosen by forward selection and best-subset perform much better with a Test MSE of ~0.042 - 0.043. The Test R-Squared of the simplified model is `r round(final_lm_model_r2, 6)`%, meaning a substantial amount of variance is explained using the simplified model. This result indicates that the simplified and biased model (we chose the predictors ourselves), lead to a still highly accurate and predictive model.
+
+```{r lm_simplified_summary}
+summary(final_lm_model)
+```
+
+\bigskip
+
+## 6.5 Multiple Linear Regression Model with Polynomial Terms, Simplified
+
+Now we will take the above linear model and create a polynomial regression model. First, we will analyze the pair plots of the predictors with human freedom.
+
+```{r polynomial_pair_plots2}
+par(mfrow=c(1,1))
+
+for ( i in 1:length(names_of_preds)){
+  plot = ggplot(data = hfi_data_combined, 
+                aes(x = hfi_data_combined[[names_of_preds[i]]], y = hf_score)) + 
+    geom_point() + geom_smooth(method = loess, formula = y ~ x, se=FALSE) + 
+    xlab(names_of_preds[i]) + ylab("Human Freedom Score") + 
+    ggtitle(paste(title = "Human Freedom Score and", names_of_preds[i]), 
+            subtitle = "The scatterplot has a smoothing, moving average (Loess) to indicate nonlinearity.")
+  
+  print(plot)
+}
+```
+
+These various scatterplots highlight that nearly all predictors have a somewhat linear relationship (even the predictors found in boosting and random forest, like ef_trade_regulatory, ef_trade_regulatory_compliance, ef_regulation_credit). The predictors we will try to see if polynomial regression can improve our simplified MLR model are:
+
+- ef_trade_regulatory
+
+- ef_trade_tariffs_mean 
+
+- ef_regulation_credit
+
+- ef_legal_gender
+
+- pf_ss_homicide
+
+```{r polynomial_simple_MLR}
+# Commentted out for sake of speed. This part takes a long time ~5+ mins. The results are not very interesting.
+
+# set.seed(111)
+# 
+# poly_vars = c("ef_trade_regulatory", "ef_trade_tariffs_mean", "ef_regulation_credit", "ef_legal_gender", "pf_ss_homicide")
+# max_poly_term = 5
+# coef_matrix = matrix(data = rep(c(0, 0, 0, 0, 0), 5^5), ncol = 5)
+# final_poly_cv_mse = rep(100, 5^5)
+# i = 1
+# for( a in 1:max_poly_term){
+#   for( b in 1:max_poly_term){
+#     for( c in 1:max_poly_term){
+#       for( d in 1:max_poly_term){
+#         for( e in 1:max_poly_term){
+#           fit = glm(as.formula(paste("hf_score ~", paste(names_of_preds, collapse = " + "), 
+#                           "+ poly(ef_trade_regulatory,", a, ") + poly(ef_trade_tariffs_mean,", 
+#                           b, ") + poly(ef_regulation_credit,", c, ") + poly(ef_legal_gender,", d
+#                           , ") + poly(pf_ss_homicide,", e, ") -", paste(poly_vars, collapse = " - "))), 
+#                     data = hfi_data_combined_train) 
+#           coef_matrix[i, ] = c(a, b, c, d, e)
+#           final_poly_cv_mse[i] = cv.glm(hfi_data_combined_train, fit, K = 5)$delta[1]
+#           i = i+1
+#         }
+#       }
+#     }
+#   }
+# }
+# 
+# paste("Minimum Coefs:")
+# paste(coef_matrix[which.min(final_poly_cv_mse), ])
+# paste("Minimum CV MSE:", round(min(final_poly_cv_mse), 6))
+# paste("Minimum CV MSE of Default MLR:", round(final_poly_cv_mse[1], 6))
+# paste("Mean TSS of Train Set:", round(mean_tss_train, 6))
+```
+
+After running, the above regression, the benefits from the polynomial terms were minimal. The best cross-validated MSE we returned was 0.106 compared to the default model's 0.11164 cross-validated MSE with **no** polynomial terms. Therefore, we will not add any terms to the MLR model.
+The improvement is too insignificant, especially as the additional terms were 1 quartic (4th power), 1 cubic, 2 quadratic, and 6 linear terms. That means there are 7 additional degrees of freedom for the model. This model adds complexity, yet fails to deliver more than a 2% increase in R-Squared value. 
+
+
+\bigskip 
+
+## 6.6 Random Forest Model, Simplified
+
+Run random forest analysis again; with subset of predictors identified at the beginning of section 6. The MLR and MLR with 
+
+```{r random_forest_simplified}
+# RANDOM FOREST AND BAGGING
+set.seed(111)
+default_ntrees = 500 
+simple_random_forests = data.frame(MTry =  seq(from = 1, to = 10, by = 1), Test_MSE = rep(100, 10))
+
+forest_i = 1 
+for (current_mtry in simple_random_forests$MTry) {
+  rf_simplified = randomForest(as.formula(paste("hf_score ~", paste(names_of_preds, collapse = " + "))), 
+                               data = hfi_data_combined_train,
+                               ntree = default_ntrees, mtry = current_mtry)
+  
+  yhat = predict(rf_simplified, newdata = hfi_data_combined_test)
+
+  simple_random_forests$MTry[forest_i] = current_mtry
+  simple_random_forests$Test_MSE[forest_i] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+  forest_i = forest_i + 1
+}
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE for the Final Simplified MLR Model:", round(final_lm_model_mse, 6))
+simple_random_forests %>% arrange(Test_MSE)
+
+temp = simple_random_forests %>% arrange(Test_MSE)
+best_mtry_10pred = temp$MTry[1]
+best_mse_10pred = round(temp$Test_MSE[1], 5)
+```
+
+The 10-predictor subset random forest model is accurate. The Test MSE is consistently around 0.05 for all MTry (Number of variables to consider at each split in tree generation). The best model is MTry = `r best_mtry_10pred` with a Test MSE of `r round(best_mse_10pred, 6)`. This result is significantly improved over the final MLR model Test MSE of `r round(final_lm_model_mse, 6)`.
+
+We will now run the same process but with the 2 confounding predictors from MLR removed (ef_trade_regulatory_compliance and pf_expression_influence). 
+
+```{r random_forest_simplified2}
+# RANDOM FOREST AND BAGGING
+set.seed(111)
+
+simple_random_forests = data.frame(MTry =  seq(from = 1, to = 8, by = 1), Test_MSE = rep(100, 8))
+forest_i = 1 
+
+for (current_mtry in simple_random_forests$MTry) {
+  rf_simplified = randomForest(as.formula(paste("hf_score ~", 
+                                                paste(names_of_preds, collapse = " + "), 
+                                                "- ef_trade_regulatory_compliance - pf_expression_influence" )), 
+                               data = hfi_data_combined_train, 
+                               ntree = default_ntrees, mtry = current_mtry)
+  
+  yhat = predict(rf_simplified, newdata = hfi_data_combined_test)
+  simple_random_forests$Test_MSE[forest_i] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+  forest_i = forest_i + 1
+}
+
+paste("The Mean TSS for the Test Set:", round(mean_tss_test, 6))
+paste("The Test MSE for the Final Simplified MLR Model:", round(final_lm_model_mse, 6))
+simple_random_forests %>% arrange(Test_MSE)
+
+temp = simple_random_forests %>% arrange(Test_MSE)
+best_mtry_8pred = temp$MTry[1]
+best_mse_8pred = round(temp$Test_MSE[1], 5)
+```
+
+The 8-predictor subset random forest model is equally as accurate. The lowest Test MSE is `r round(best_mse_8pred, 6)` with MTry set at `r best_mtry_8pred`. 
+These random forest models are very accurate and the 8-predictor subset results in a model that has an R-Squared of roughly 94%. Random forest models seem to capture most of the variance within the HFI with minimal worries about overfit. Most likely this accuracy indicates the HFI's variance **does** have underlying connections as a model with increasing degrees of freedom can continually deliver high accuracy models without much overfit. As stated before, these simpler models are useful to estimate while having more insight into what affects overall human freedom. 
+
+The final model we are using is the 8-predictor subset with MTRY of `r best_mtry_8pred`. The results of the model and importance analysis of predictors: 
+
+```{r rf_final}
+default_ntrees = 500
+rf_final = randomForest(as.formula(paste("hf_score ~", 
+                                              paste(names_of_preds, collapse = " + "), 
+                                              "- ef_trade_regulatory_compliance - pf_expression_influence" )), 
+                        data = hfi_data_combined_train, ntree = default_ntrees, 
+                        mtry = best_mtry_8pred, importance = T)
+
+yhat = predict(rf_final, newdata = hfi_data_combined_test)
+rf_final_mse = round(mean((yhat - hfi_data_combined_test$hf_score)^2), 6)
+rf_final$importance
+rf_final_mse
+print( paste("The Test MSE for 8-Predictor Subset Random Forest: ", round(rf_final_mse, 4), sep = "" ))
+print( paste("The Estimated R-Squared for 8-Predictor Subset Random Forest: ", 
+             round((1 - (rf_final_mse / mean_tss_test)) * 100, 2), "%", sep = "" ))
+print( paste("The Test MSE for 8-Predictor MLR Model: ", round(final_lm_model_mse, 4), sep = "" ))
+print( paste("The Estimated R-Squared for 8-Predictor MLR Model: ", 
+             round((1 - (final_lm_model_mse / mean_tss_test)) * 100, 2), "%", sep = "" ))
+```
+
+
+Overall, the random forests had exceptional predictive accuracy with the subset of predictors. The R-Squared is roughly 95%. That is an improvement compared to the simplified MLR (R-Squared = 85%). The importance of the random forest indicates nearly all predictors have a degree of relevance (especially compared to the random forest with all 39 predictors). 
+
+We strongly believe the 8-predictor subset random forest model is better than the complete 39-predictor model. The 8-predictor model simplifies the complexity of explaining the components of human freedom by removing over 75% of the predictors. The resulting model is nearly as accurate and is easier to see the predictors that are strongly connected to human freedom. The importance highlights that each of the 8 predictors are critical to lowering the MSE. 
+
+Additionally, the final random forest model (8-predictor subset) is superior to the final MLR model created earlier. The final MLR model captures roughly 85% of the variance of human freedom compared to the random forest model's 95%. However, the MLR is more useful for determining the influence each predictor has on the estimated human freedom; so both models are useful.
+
+
+\bigskip
+
+## 6.7 Boosting Model, Simplified
+
+```{r boosting_simplified}
+# BOOSTING
+set.seed(111)
+par(mfrow=c(1,1))
+
+lambda = 0.01  # the recommended value. we could test more thoroughly, but the amount of time would be large. 
+default_ntrees = 3000
+max_inter_depth = 10  # this is more reasonable, typically, one does not need many leaf nodes per tree
+
+boosting_simplified_test_mse = rep(NA, max_inter_depth)
+
+for( inter_depth in 1:max_inter_depth){
+  boosting_gbm = gbm(as.formula(paste("hf_score ~", paste(names_of_preds, collapse = " + " ))), 
+                     data = hfi_data_combined_train, distribution="gaussian", 
+                     interaction.depth = inter_depth, n.trees=default_ntrees, 
+                     shrinkage = lambda, cv.folds = 10)
+  
+  yhat = predict(boosting_gbm, newdata = hfi_data_combined_test, n.trees = default_ntrees)
+  boosting_simplified_test_mse[inter_depth] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+  print(paste("At Maximum Inter-Depth: ", inter_depth))
+  print(paste("10-Fold Cross-Validation Error Estimate is", 
+              round(boosting_gbm$cv.error[default_ntrees], 6)))
+  print(paste("Test MSE:", round(boosting_simplified_test_mse[inter_depth], 6)))
+  print(paste("Mean TSS of Test Set:", round(mean_tss_test, 6)))
+}
+
+best_boosting_inter_depth = 8  # chosen manually looking at results.
+final_boosting_test_mse = boosting_simplified_test_mse[8]
+```
+
+
+This boosting model is very accurate with the smaller 10-predictor subset. With more complex individual trees (dictated by the inter_depth hyper-parameter), indicate the model does not suffer much risk of overfit. MEaning, the variance within human freedom can be captured by these 10-predictors quite well. The smallest Test MSE is 0.047 which is comparable to the final 8-predictor subset random forest model above.
+
+We will run the boosting models with an 8-predictor subset removing the potentially confounding predictors ef_trade_regulatory_compliance and pf_expression_influence. 
+
+```{r boosting_simplified2}
+# BOOSTING
+set.seed(111)
+
+lambda = 0.01  # the recommended value. we could test more thoroughly, but the amount of time would be large. 
+default_ntrees = 3000
+max_inter_depth = 8  # this is more reasonable, typically, one does not need many leaf nodes per tree
+
+boosting_simplified_test_mse = rep(NA, max_inter_depth)
+
+for( inter_depth in 1:max_inter_depth){
+  boosting_gbm = gbm(as.formula(paste("hf_score ~", paste(names_of_preds, collapse = " + " ),
+                                      "- ef_trade_regulatory_compliance - pf_expression_influence" )), 
+                     data = hfi_data_combined_train, distribution="gaussian", 
+                     interaction.depth = inter_depth, n.trees=default_ntrees, 
+                     shrinkage = lambda, cv.folds = 10)
+  
+  yhat = predict(boosting_gbm, newdata = hfi_data_combined_test, n.trees = default_ntrees)
+  boosting_simplified_test_mse[inter_depth] = mean((yhat - hfi_data_combined_test$hf_score)^2)
+
+  print(paste("At Maximum Inter-Depth: ", inter_depth))
+  print(paste("10-Fold Cross-Validation Error Estimate is", 
+              round(boosting_gbm$cv.error[default_ntrees], 6)))
+  print(paste("Test MSE:", round(boosting_simplified_test_mse[inter_depth], 6)))
+  print(paste("Mean TSS of Test Set:", round(mean_tss_test, 6)))
+}
+```
+
+The 8-predictor subset (removing 2 predictors for being confounding in the MLR; ef_trade_regulatory_compliance and pf_expression_influence) results in a worse model, but only slightly. With only somewhat worse Test MSE results 0.052 vs 0.047, we will choose the less complex (by number of predictors perspective). The 8-predictor subset boosting model performs best with high inter-depth level; meaning that the individual trees aggregating within the boosting model capture a lot of variance without much overfit concerns. Again, this finding has been found in all other models previously. The fact that models can have high degrees of freedom and flexibility to capture any potential trend, yet not overfit, means the predictors are most likely very strongly (near 100%) correlated with human freedom.
+
+Here is our final 8-predictor subset boosting model with inter-depth 6 (after 6, the model does not seem to benefit much from the additional model variance).
+
+```{r final_boosting}
+default_ntrees = 3000
+lambda = 0.01
+
+final_boosting_gbm = gbm(as.formula(paste("hf_score ~", paste(names_of_preds, collapse = " + " ),
+                                      "- ef_trade_regulatory_compliance - pf_expression_influence" )), 
+                         data = hfi_data_combined_train, distribution="gaussian", 
+                         interaction.depth = 6, n.trees=default_ntrees, 
+                         shrinkage = lambda, cv.folds = 10)
+
+summary(final_boosting_gbm, plot=F)
+
+yhat = predict(boosting_gbm, newdata = hfi_data_combined_test, n.trees = default_ntrees)
+final_boosting_test_mse = mean((yhat - hfi_data_combined_test$hf_score)^2)
+final_boosting_test_r2 = round((1 - (final_boosting_test_mse / mean_tss_test)) * 100, 2)
+
+print( paste("The Test MSE for 8-Predictor Subset Boosting Model: ", round(final_boosting_test_mse, 4), sep = "" ))
+print( paste("The Estimated R-Squared for 8-Predictor Subset Boosting Model: ", 
+             round((1 - (final_boosting_test_mse / mean_tss_test)) * 100, 2), "%", sep = "" ))
+print( paste("The Test MSE for 8-Predictor Subset Random Forest: ", round(rf_final_mse, 4), sep = "" ))
+print( paste("The Estimated R-Squared for 8-Predictor Subset Random Forest: ", 
+             round((1 - (rf_final_mse / mean_tss_test)) * 100, 2), "%", sep = "" ))
+print( paste("The Test MSE for 8-Predictor MLR Model: ", round(final_lm_model_mse, 4), sep = "" ))
+print( paste("The Estimated R-Squared for 8-Predictor MLR Model: ", 
+             round((1 - (final_lm_model_mse / mean_tss_test)) * 100, 2), "%", sep = "" ))
+
+```
+
+Our final boosting model is comparable to the final random forest model (also 8-predictor subset); while both tree-based models outperform the final MLR model considerably (R-Squared is different by roughly 10%; 85% vs 95% where 100% is perfect). However, the boosting model is not better than the random forest model as it is more complex and has a slightly worse error. We prefer the random forest model for use with predictions and MLR for inferencing on the predictors to gage the effect predictors have on human freedom. 
+
+
+\bigskip
+
+## 6.8 Comparision of Model Predictive Accuracy, Complexity, and Predictor Inferencing
+
+```{r final_comparisons}
+final_results_matrix = matrix(
+  data=c(round(final_lm_model_mse, 4), round(rf_final_mse, 4), 
+         round(final_boosting_test_mse, 4), 
+         round((1 - final_lm_model_mse / mean_tss_test) * 100, 2),
+         round((1 - rf_final_mse / mean_tss_test) * 100, 2),
+         round((1 - final_boosting_test_mse / mean_tss_test) * 100, 2)), nrow=3, ncol=2)
+colnames(final_results_matrix) = c("Test MSE", "Estimate R-Squared (%)")
+rownames(final_results_matrix) = c("Multiple Linear Regression with 8 Predictors", 
+                                   "Random Forest with 8 Predictors and Mtry of 2",
+                                   "Boosting with 8 Predictors and Inter-Depth of 6")
+
+print(as.data.frame(final_results_matrix))
+```
+
+These final results show that biasing the dataset significantly (using only 20-25% of the total predictors available) still yields powerful, accurate models. The MLR model is clearly inferior to the ensemble methods in accuracy. However, the MLR does allow for inferencing, which shows all 8 predictors are significantly influencing the estimate for human freedom. 
+
+The random forest and boosting models both are the models for accuracy. We actually prefer these boosting and random forest models compared to the 39-predictor versions as the subset of predictors removes data needed to estimate. However, it is important to note that fewer predictors does not mean simpler, per-se. The random forest and boosting models are complex still as they build many trees (500 and 3000, respectively, for these specific models though could be more tailored to potentially improve accuracy), which drives the non-linearity of the models and the high amount of variance captured by these models. Yet, the amount of data needed to run these random forest and boosting models is less stringent (fewer predictors == fewer observations needed). 
+
+The more complex the boosting and random forest model became, the better the accuracy (especially boosting and inter-depth hyper-parameter). This finding shows that the variance within human freedom can be captured with the predictors with little risk of overfitting. Normally, these more complex and flexible models can capture increasingly non-linear and subtle trends, but with this increased sensitivity to patterns, the models often find patterns where they do not exist. But, the HFI does not seem to have this issue. The patterns found by the flexible boosting model are actually patterns within the entire dataset. Most likely because the dataset is an aggregate of the variables, so human freedom is directly (or largely) calculated by the predictors we are utilizing to estimate human freedom. 
+
+#### In short: The MLR model for analyzing predictor's affects on human freedom and random forest model for accurately estimating what humna freedom is with the 8-predictor subset.
+
+### The 8-predictor subset is:
+
+pf_expression_control, ef_legal_gender, ef_legal_military, ef_trade_tariffs_mean, ef_trade_movement_visit, ef_trade_regulatory, ef_regulation_credit, pf_ss_homicide,
+
+
+\bigskip
+\newpage 
+
+# 7. Our Final Thoughts on Complete Analysis
+
+Overall, the dataset has variables that are all correlated and inter-connected. The strong relationships between the variables result in very accurate models, even the simple ones like MLR that tend to have weaker predictive ability. Hence, there is not much to takeaway from the prediction side of the various models, but to focus on what predictors are the strongest markers for greater human freedom (or lesser). 
+
+We find that MLR, random forest, and boosting models all tend to indicate that these predictors tend to be important / significant / relevant. We list some of them out under section 6.3. Here is the list again:
+
+1. pf_expression_control (found in MLR, random forest, boosting)
+
+2. pf_expression_influence (found in MLR, random forest, boosting)
+
+3. ef_legal_gender (found in MLR, random forest, boosting)
+
+4. ef_legal_military (found in MLR, random forest, boosting)
+
+5. ef_trade_tariffs_mean (found in MLR, random forest, boosting)
+
+6. ef_trade_movement_visit (found in MLR, random forest, boosting)
+
+7. ef_trade_regulatory (found in random forest and boosting)
+
+8. ef_trade_regulatory_compliance (found in random forest and boosting)
+
+9. ef_regulation_credit (found in random forest and boosting)
+
+10. pf_ss_homicide (found in MLR and random forest)
+
+### Some notes of confounders within the MLR:
+
+We found 2 pairs of confounding predictors Confounding predictors indicate that the predictors are capturing the same variance and are correlated themselves.
+
+1. pf_expression_control and pf_expression_influence
+
+2. ef_trade_regulatory_compliance and ef_trade_regulatory
+
+## Which Model is Best:
+
+We recommend using the MLR if all 31 predictors required for the MLR model given by best-subset or forward selection are present with valid observations. Otherwise, the simpler, 8-predictor random forest or boosting models are preferable. IF computation time is a concern, random forest is better as it can be generated quicker than the boosting. Boosting is slightly less accurate and is more resource intensive to generate the model.
+
+
+## Final Conclusions and Takeaways
+
+Overall, this dataset clearly has inter-connected variables. Most likely the human freedom score is an aggregate of the other 39+ predictors (the additional predictors we ignored due to numerous N/As). Thus, nearly all methods should deliver good results as the dataset is formulaically related among the variables. Regardless, the ensemble methods' accuracy (random forest and boosting) was impressive. These models can often predict human values very well (like rating human freedom metrics). With such high accuracy of the random forest and boosting models, we believe there is a possibility that the dataset variables are not completely objectively selected. 
+
+In the beginning of the CATO institute manual for the Human Freedom Index, they bash and attack the lack of freedom within China. This biased stance from the intro of a paper, combined with calculating human freedom as a measure based on **western ideals** of freedom and **libertarian ideals** distorts human freedom. They are not comparing their human freedom metric to surveys of individuals' own perception of freedom within their home country. Obviously, the survey in Russia or China would have a high likelihood of people lying to ensure they are not hurt, which helps to further CATO's own opinions on human freedom. On the other hand, they may find citizens in Norway feel more liberated and free than Americans, despite their measurement. 
+
+OVerall, the Human Freedom Index is an attempt to measure and quantify human freedom by the CATO Institute. Our findings and models indicate that the index is overly complex and could be simplified by focusing on 10 main indicators for human freedom (listed above under section 7 Conclusion).
+The dataset is also using the western and libertarian views on freedom; often focusing on individual freedom versus collective well-being like some of the eastern world focuses on (like South Korea, Japan). 
+
+
+
+\bigskip
+\newpage
