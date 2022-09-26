@@ -1,21 +1,18 @@
 # Projects
 Publicly Available Projects.  Both from school and personal projects.  These are closer to being refined then average private work.
 
-The collection of content in this repository will expand by the end of 2021. I expect to add more content surrounding economic metrics 
-and education. 
-
 ### My website is located [here](https://andrew-morgan-website.herokuapp.com).
 
 ## Purpose: 
 
-This Repo is for projects and files to be shared publicly from my personal projects and website. A significant amount of content will be for:
+This Repo is for projects and files to be shared publicly from my website (namely) and other projects (that are not web-based). The goal is open-sourcing all content. A significant amount of content will be for:
 
-- Data Science: analysis of various datasets; namely in **R** and **Python** and possibly in Java at a later point.
+- Data Science: analysis of various datasets; namely in **R** and **Python**.
 - Economic Analyses: pet projects that typically analyze economic/income/wealth inequality and effects on economic 
   growth (basically macroeconomics)
 - Coding Projects: smaller coding projects that can be run in one's own local setup (ideally); 
   typically **Python** though possibly Java and other languages I wish to improve or learn
-- Applications: I may add application source code (though possibly only components)
+- Applications: I may add application source code (though possibly not complete).
 
 
 ## Table of Contents:
